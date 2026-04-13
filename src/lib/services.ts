@@ -147,3 +147,30 @@ export function serviceLabel(serviceKey: string, subKey?: string | null): string
   }
   return service.label
 }
+
+// Devuelve el título legible de una propuesta, manejando tanto el
+// nuevo formato multi-selección (sub_services) como el legacy de un
+// solo sub_service.
+export interface ProposalLabelLike {
+  service_type: string
+  sub_service: string | null
+  sub_services?: { key: string; label: string }[] | null
+}
+
+export function proposalServiceLabel(p: ProposalLabelLike): string {
+  const svc = findService(p.service_type)
+  if (!svc) return p.service_type
+  const list = p.sub_services ?? []
+  if (list.length === 1) {
+    return `${svc.label} — ${list[0].label}`
+  }
+  if (list.length > 1) {
+    return svc.label
+  }
+  // legacy
+  if (p.sub_service) {
+    const sub = svc.subServices?.find((s) => s.key === p.sub_service)
+    if (sub) return `${svc.label} — ${sub.label}`
+  }
+  return svc.label
+}

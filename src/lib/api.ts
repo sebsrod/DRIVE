@@ -57,12 +57,19 @@ export interface HonorariosItem {
   total: number
 }
 
+export interface ProposalSubService {
+  key: string
+  label: string
+  description: string
+}
+
 export interface Proposal {
   id: string
   client_id: string
   owner_id: string
   service_type: string
   sub_service: string | null
+  sub_services: ProposalSubService[]
   description: string
   hours: number
   hourly_rate: number
@@ -373,6 +380,7 @@ interface CreateProposalParams {
   ownerId: string
   serviceType: string
   subService: string | null
+  subServices: ProposalSubService[]
   description: string
   hours: number
   hourlyRate: number
@@ -393,6 +401,7 @@ export async function createProposal(
       owner_id: params.ownerId,
       service_type: params.serviceType,
       sub_service: params.subService,
+      sub_services: params.subServices,
       description: params.description,
       hours: params.hours,
       hourly_rate: params.hourlyRate,

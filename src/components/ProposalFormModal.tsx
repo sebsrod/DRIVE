@@ -1,16 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import Modal from './Modal'
-import { HonorariosItem, ProposalExpense } from '../lib/api'
-import {
-  AdditiveSubService,
-  SERVICES,
-  findService,
-  findSubService,
-} from '../lib/services'
+import { HonorariosItem, ProposalExpense, ProposalSubService } from '../lib/api'
+import { AdditiveSubService, SERVICES, findService } from '../lib/services'
 
 export interface ProposalFormValues {
   serviceType: string
   subService: string | null
+  subServices: ProposalSubService[]
   description: string
   hours: number
   hourlyRate: number
@@ -71,7 +67,7 @@ function formatMoney(value: number): string {
 
 export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
   const [serviceType, setServiceType] = useState<string>(SERVICES[0].key)
-  const [subService, setSubService] = useState<string>('')
+  const [subServiceKeys, setSubServiceKeys] = useState<string[]>([])
   const [description, setDescription] = useState<string>('')
   const [hours, setHours] = useState<string>('')
   const [hourlyRate, setHourlyRate] = useState<string>('')
@@ -91,10 +87,9 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
     if (!open) return
     const first = SERVICES[0]
     setServiceType(first.key)
-    setSubService(first.subServices?.[0]?.key ?? '')
-    setDescription(
-      first.subServices?.[0]?.description ?? first.description ?? '',
-    )
+    // Si el servicio tiene actos, dejar todos sin marcar; el usuario elige.
+    setSubServiceKeys([])
+    setDescription(first.description ?? '')
     setHours('')
     setHourlyRate('')
     setCurrency('USD')
@@ -107,21 +102,15 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
   const handleServiceChange = (key: string) => {
     setServiceType(key)
     const svc = findService(key)
-    if (svc?.subServices && svc.subServices.length > 0) {
-      const first = svc.subServices[0]
-      setSubService(first.key)
-      setDescription(first.description)
-    } else {
-      setSubService('')
-      setDescription(svc?.description ?? '')
-    }
+    setSubServiceKeys([])
+    setDescription(svc?.description ?? '')
     setAdditiveRows(buildAdditiveRows(key))
   }
 
-  const handleSubServiceChange = (key: string) => {
-    setSubService(key)
-    const sub = findSubService(serviceType, key)
-    setDescription(sub?.description ?? '')
+  const toggleSubService = (key: string) => {
+    setSubServiceKeys((keys) =>
+      keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key],
+    )
   }
 
   const updateExpense = (index: number, patch: Partial<ExpenseRow>) => {
@@ -244,12 +233,23 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
       selectedExpenses.push({ label: row.label, amount: +amt.toFixed(2) })
     }
 
+    // Construir array de sub-servicios seleccionados con su descripción
+    const subServicesArr: ProposalSubService[] = subServiceKeys
+      .map((key) => {
+        const sub = service?.subServices?.find((s) => s.key === key)
+        if (!sub) return null
+        return { key: sub.key, label: sub.label, description: sub.description }
+      })
+      .filter((x): x is ProposalSubService => x !== null)
+
     try {
       setSubmitting(true)
       setError(null)
       await onSubmit({
         serviceType,
-        subService: hasSubServices ? subService || null : null,
+        // Mantener la columna legacy con el primer key (o null si ninguno)
+        subService: hasSubServices ? subServicesArr[0]?.key ?? null : null,
+        subServices: subServicesArr,
         description: description.trim(),
         hours: h,
         hourlyRate: r,
@@ -296,19 +296,34 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
         {hasSubServices && (
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Tipo de acto
+              Tipos de acto
             </label>
-            <select
-              value={subService}
-              onChange={(e) => handleSubServiceChange(e.target.value)}
-              className={inputClass}
-            >
-              {service?.subServices?.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            <p className="mb-2 text-xs text-slate-500">
+              Selecciona uno o varios actos a tramitar. Todos los marcados se
+              incluirán en la propuesta con su descripción.
+            </p>
+            <ul className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              {service?.subServices?.map((s) => {
+                const checked = subServiceKeys.includes(s.key)
+                return (
+                  <li key={s.key} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id={`subservice-${s.key}`}
+                      checked={checked}
+                      onChange={() => toggleSubService(s.key)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label
+                      htmlFor={`subservice-${s.key}`}
+                      className="text-sm text-slate-800"
+                    >
+                      {s.label}
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
           </div>
         )}
 

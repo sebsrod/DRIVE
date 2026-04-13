@@ -13,7 +13,7 @@ import {
   proposalGrandTotal,
 } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
-import { serviceLabel } from '../lib/services'
+import { proposalServiceLabel } from '../lib/services'
 
 export default function ProposalView() {
   const { scope: scopeSlug, clientId, proposalId } = useParams<{
@@ -144,15 +144,43 @@ export default function ProposalView() {
           su consideración la siguiente <strong>Propuesta de Servicios Profesionales</strong>:
         </p>
 
-        {/* Servicio principal y complementarios */}
+        {/* Servicio principal */}
         <section className="mt-6">
           <h2 className="border-b border-slate-300 pb-1 text-base font-bold uppercase text-slate-900">
-            {serviceLabel(proposal.service_type, proposal.sub_service)}
+            {proposalServiceLabel(proposal)}
           </h2>
           <p className="mt-3 whitespace-pre-line text-justify text-sm leading-relaxed text-slate-800">
             {proposal.description}
           </p>
 
+          {/* Actos contemplados (multi-selección dentro del servicio) */}
+          {proposal.sub_services && proposal.sub_services.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-sm font-bold uppercase text-slate-900">
+                Actos contemplados
+              </h3>
+              <p className="mt-1 text-justify text-sm text-slate-800">
+                La presente propuesta contempla la tramitación de los siguientes
+                actos:
+              </p>
+              <ol className="mt-3 space-y-3 pl-5">
+                {proposal.sub_services.map((acto, i) => (
+                  <li key={acto.key ?? i} className="text-justify">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {i + 1}. {acto.label}
+                    </p>
+                    {acto.description && (
+                      <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-800">
+                        {acto.description}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Servicios complementarios (con honorarios propios) */}
           {proposal.honorarios_items && proposal.honorarios_items.length > 0 && (
             <div className="mt-5">
               <h3 className="text-sm font-bold uppercase text-slate-900">
@@ -205,7 +233,7 @@ export default function ProposalView() {
             <tbody>
               <tr className="border-b border-slate-300">
                 <td className="px-3 py-2 text-slate-800">
-                  {serviceLabel(proposal.service_type, proposal.sub_service)}
+                  {proposalServiceLabel(proposal)}
                 </td>
                 <td className="px-3 py-2 text-right text-slate-900">
                   {proposal.hours}

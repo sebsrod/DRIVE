@@ -20,7 +20,7 @@ import {
   slugFromScope,
   uploadDocument,
 } from '../lib/api'
-import { serviceLabel } from '../lib/services'
+import { proposalServiceLabel } from '../lib/services'
 import DocumentList from '../components/DocumentList'
 import UploadButton from '../components/UploadButton'
 import FolderFormModal from '../components/FolderFormModal'
@@ -101,6 +101,7 @@ export default function ClientView() {
       ownerId: user.id,
       serviceType: values.serviceType,
       subService: values.subService,
+      subServices: values.subServices,
       description: values.description,
       hours: values.hours,
       hourlyRate: values.hourlyRate,
@@ -207,7 +208,7 @@ export default function ClientView() {
                         }/propuestas/${p.id}`}
                         className="block truncate font-medium text-indigo-700 hover:underline"
                       >
-                        {serviceLabel(p.service_type, p.sub_service)}
+                        {proposalServiceLabel(p)}
                       </Link>
                       <p className="text-xs text-slate-500">
                         {new Date(p.created_at).toLocaleDateString()} ·{' '}
