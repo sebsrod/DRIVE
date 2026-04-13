@@ -54,7 +54,7 @@ export default function FolderView() {
       <Link to="/carpetas" className="text-sm text-indigo-600 hover:underline">
         ← Volver a carpetas
       </Link>
-      <div className="mb-6 mt-2 flex items-center justify-between">
+      <div className="mb-6 mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">
             📁 {folder?.name ?? 'Carpeta'}
