@@ -36,6 +36,7 @@ body {
   .print-sheet {
     box-shadow: none !important;
     max-width: none !important;
-    padding: 18mm 15mm !important;
+    /* 1 pulgada en todos los lados */
+    padding: 1in !important;
   }
 }
