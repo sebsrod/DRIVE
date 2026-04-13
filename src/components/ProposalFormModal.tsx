@@ -38,7 +38,6 @@ interface AdditiveRow {
   description: string
   checked: boolean
   hours: string
-  rate: string
   expense: string
 }
 
@@ -59,7 +58,6 @@ function buildAdditiveRows(serviceKey: string): AdditiveRow[] {
     description: sub.description,
     checked: false,
     hours: '',
-    rate: '',
     expense: sub.suggestedExpense != null ? String(sub.suggestedExpense) : '',
   }))
 }
@@ -146,16 +144,17 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
   }, [hours, hourlyRate])
 
   const honorariosComplementarios = useMemo(() => {
+    const r = parseFloat(hourlyRate)
+    if (isNaN(r)) return 0
     return +additiveRows
       .filter((a) => a.checked)
       .reduce((acc, a) => {
         const h = parseFloat(a.hours)
-        const r = parseFloat(a.rate)
-        if (isNaN(h) || isNaN(r)) return acc
+        if (isNaN(h)) return acc
         return acc + h * r
       }, 0)
       .toFixed(2)
-  }, [additiveRows])
+  }, [additiveRows, hourlyRate])
 
   const honorariosTotal = useMemo(
     () => +(honorariosPrincipal + honorariosComplementarios).toFixed(2),
@@ -203,28 +202,25 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
       return
     }
 
-    // Validar y construir items complementarios
+    // Validar y construir items complementarios.
+    // Todos los items complementarios usan el mismo costo por hora que los
+    // honorarios principales, así el usuario solo lo escribe una vez.
     const honorariosItems: HonorariosItem[] = []
     const additiveExpenses: ProposalExpense[] = []
     for (const row of additiveRows) {
       if (!row.checked) continue
       const ah = parseFloat(row.hours)
-      const ar = parseFloat(row.rate)
       if (isNaN(ah) || ah <= 0) {
         setError(`Indica las horas para "${row.label}".`)
         return
       }
-      if (isNaN(ar) || ar < 0) {
-        setError(`Indica el costo por hora para "${row.label}".`)
-        return
-      }
-      const itemTotal = +(ah * ar).toFixed(2)
+      const itemTotal = +(ah * r).toFixed(2)
       honorariosItems.push({
         key: row.key,
         label: row.label,
         description: row.description,
         hours: ah,
-        rate: ar,
+        rate: r,
         total: itemTotal,
       })
       const expAmt = parseFloat(row.expense)
@@ -416,7 +412,7 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
                       {row.label}
                     </span>
                   </label>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     <div>
                       <label className="mb-1 block text-[10px] font-medium uppercase text-slate-500">
                         Horas
@@ -428,22 +424,6 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
                         value={row.hours}
                         onChange={(e) =>
                           updateAdditive(i, { hours: e.target.value })
-                        }
-                        disabled={!row.checked}
-                        className={smallInputClass}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-medium uppercase text-slate-500">
-                        Costo/hora
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={row.rate}
-                        onChange={(e) =>
-                          updateAdditive(i, { rate: e.target.value })
                         }
                         disabled={!row.checked}
                         className={smallInputClass}
@@ -466,6 +446,9 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
                       />
                     </div>
                   </div>
+                  <p className="mt-2 text-[11px] italic text-slate-500">
+                    El costo por hora es el indicado en Honorarios Profesionales.
+                  </p>
                 </li>
               ))}
             </ul>
