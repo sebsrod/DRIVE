@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { Profile as ProfileT, getProfile, upsertProfile } from '../lib/api'
+import { getProfile, upsertProfile } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
 
 export default function Profile() {
