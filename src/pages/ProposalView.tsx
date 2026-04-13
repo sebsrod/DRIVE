@@ -73,6 +73,24 @@ export default function ProposalView() {
   const profileMissing =
     !author?.full_name && !author?.phone && !author?.ipsa_number
 
+  const handlePrint = () => {
+    const previousTitle = document.title
+    // Cambiamos el title temporalmente para que, si el navegador imprime
+    // el título de la página en su cabecera automática, no aparezca
+    // "Office Drive". También sirve como nombre por defecto si el usuario
+    // elige "Guardar como PDF".
+    const safeName = (client?.name ?? 'Cliente').replace(/[^\w\s.-]+/g, '')
+    document.title = `Propuesta de Servicios - ${safeName}`
+    const restore = () => {
+      document.title = previousTitle
+      window.removeEventListener('afterprint', restore)
+    }
+    window.addEventListener('afterprint', restore)
+    window.print()
+    // Fallback por si afterprint no se dispara (Safari viejo, etc.)
+    setTimeout(restore, 2000)
+  }
+
   return (
     <div>
       {/* Barra de acciones (oculta al imprimir) */}
@@ -82,7 +100,7 @@ export default function ProposalView() {
         </Link>
         <div className="flex gap-2">
           <button
-            onClick={() => window.print()}
+            onClick={handlePrint}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
             Imprimir / Guardar PDF

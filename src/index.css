@@ -26,12 +26,16 @@ body {
   main {
     padding: 0 !important;
   }
+  /* margin 0 en @page para que el navegador no imprima sus headers
+     (título de la página) ni footers (URL). El margen de la hoja se
+     compensa con padding propio en .print-sheet. */
+  @page {
+    margin: 0;
+    size: auto;
+  }
   .print-sheet {
     box-shadow: none !important;
-    padding: 0 !important;
     max-width: none !important;
-  }
-  @page {
-    margin: 18mm;
+    padding: 18mm 15mm !important;
   }
 }
