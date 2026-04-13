@@ -48,6 +48,15 @@ export interface ProposalExpense {
   amount: number
 }
 
+export interface HonorariosItem {
+  key: string
+  label: string
+  description: string
+  hours: number
+  rate: number
+  total: number
+}
+
 export interface Proposal {
   id: string
   client_id: string
@@ -61,6 +70,7 @@ export interface Proposal {
   currency: string
   notes: string | null
   expenses: ProposalExpense[]
+  honorarios_items: HonorariosItem[]
   created_at: string
 }
 
@@ -369,6 +379,7 @@ interface CreateProposalParams {
   currency: string
   notes: string | null
   expenses: ProposalExpense[]
+  honorariosItems: HonorariosItem[]
 }
 
 export async function createProposal(
@@ -389,6 +400,7 @@ export async function createProposal(
       currency: params.currency,
       notes: params.notes,
       expenses: params.expenses,
+      honorarios_items: params.honorariosItems,
     })
     .select()
     .single()
@@ -400,8 +412,16 @@ export function expensesTotal(expenses: ProposalExpense[]): number {
   return +expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0).toFixed(2)
 }
 
+export function honorariosItemsTotal(items: HonorariosItem[]): number {
+  return +items.reduce((acc, i) => acc + (Number(i.total) || 0), 0).toFixed(2)
+}
+
 export function proposalGrandTotal(p: Proposal): number {
-  return +(Number(p.total) + expensesTotal(p.expenses ?? [])).toFixed(2)
+  return +(
+    Number(p.total) +
+    honorariosItemsTotal(p.honorarios_items ?? []) +
+    expensesTotal(p.expenses ?? [])
+  ).toFixed(2)
 }
 
 export async function deleteProposal(id: string): Promise<void> {

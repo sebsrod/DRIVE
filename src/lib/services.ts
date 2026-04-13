@@ -1,6 +1,14 @@
 // Catálogo de servicios para las Propuestas de Servicios.
 // Cada servicio define una descripción base que se carga en el formulario;
 // el usuario puede editarla antes de generar la propuesta.
+//
+// Hay dos tipos de "sub-servicios":
+//   - subServices (excluyentes): el usuario elige UNO. Ej: Acta de Asamblea
+//     puede ser de Aumento de Capital, Nombramiento de Junta, etc.
+//   - additiveSubServices (complementarios): el usuario marca varios y
+//     cada uno aporta sus propias horas, costo por hora y gasto sugerido.
+//     Ej: al constituir una compañía se puede sumar Registro de Libros,
+//     R.I.F. y Inscripciones ante organismos.
 
 export interface SubService {
   key: string
@@ -8,11 +16,19 @@ export interface SubService {
   description: string
 }
 
+export interface AdditiveSubService {
+  key: string
+  label: string
+  description: string
+  suggestedExpense: number | null
+}
+
 export interface ServiceDef {
   key: string
   label: string
   description: string
   subServices: SubService[] | null
+  additiveSubServices?: AdditiveSubService[]
 }
 
 export const SERVICES: ServiceDef[] = [
@@ -63,8 +79,31 @@ export const SERVICES: ServiceDef[] = [
     key: 'constitucion_compania',
     label: 'Constitución de Compañía',
     description:
-      'Constitución de sociedad mercantil ante el Registro Mercantil. Comprende la asesoría sobre el tipo societario más conveniente (Compañía Anónima, Sociedad de Responsabilidad Limitada u otra figura), la reserva de denominación, la redacción del documento constitutivo y los estatutos sociales, la tramitación del Registro Único de Información Fiscal (R.I.F.) y la inscripción definitiva ante el Registro Mercantil correspondiente.',
+      'Constitución de sociedad mercantil ante el Registro Mercantil. Comprende la asesoría sobre el tipo societario más conveniente (Compañía Anónima, Sociedad de Responsabilidad Limitada u otra figura), la reserva de denominación, la redacción del documento constitutivo y los estatutos sociales y la inscripción definitiva ante el Registro Mercantil correspondiente.',
     subServices: null,
+    additiveSubServices: [
+      {
+        key: 'registro_libros',
+        label: 'Registro de Libros',
+        description:
+          'Adquisición y habilitación de los libros legales obligatorios de la compañía: Libro Diario, Libro Mayor, Libro de Inventario y Balances, Libro de Accionistas y Libro de Actas de Asambleas, los cuales serán sellados ante el Registro Mercantil correspondiente para ser usados conforme a la legislación mercantil vigente.',
+        suggestedExpense: 350,
+      },
+      {
+        key: 'rif',
+        label: 'Registro de Información Fiscal (R.I.F.)',
+        description:
+          'Tramitación e inscripción de la compañía en el Registro Único de Información Fiscal (R.I.F.) ante el Servicio Nacional Integrado de Administración Aduanera y Tributaria (SENIAT). Comprende la preparación y consignación de los recaudos exigidos y la entrega del certificado de R.I.F. de la sociedad.',
+        suggestedExpense: 100,
+      },
+      {
+        key: 'inscripciones_organismos',
+        label: 'Inscripciones ante Entes y Organismos Recaudadores',
+        description:
+          'Inscripción de la compañía ante los entes y organismos recaudadores requeridos para su funcionamiento, entre ellos el Instituto Venezolano de los Seguros Sociales (I.V.S.S.), el Régimen Prestacional de Empleo, el Banco Nacional de Vivienda y Hábitat (BANAVIH), el Instituto Nacional de Capacitación y Educación Socialista (INCES) y el Registro Nacional de Empresas y Establecimientos. Incluye la elaboración de los formatos correspondientes, su consignación ante cada organismo y el seguimiento del trámite.',
+        suggestedExpense: 400,
+      },
+    ],
   },
   {
     key: 'registro_marca',

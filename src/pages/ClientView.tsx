@@ -107,6 +107,7 @@ export default function ClientView() {
       currency: values.currency,
       notes: values.notes || null,
       expenses: values.expenses,
+      honorariosItems: values.honorariosItems,
     })
     await refresh()
   }

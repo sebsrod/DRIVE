@@ -9,6 +9,7 @@ import {
   getClient,
   getProfile,
   getProposal,
+  honorariosItemsTotal,
   proposalGrandTotal,
 } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
@@ -143,7 +144,7 @@ export default function ProposalView() {
           su consideración la siguiente <strong>Propuesta de Servicios Profesionales</strong>:
         </p>
 
-        {/* Servicio */}
+        {/* Servicio principal y complementarios */}
         <section className="mt-6">
           <h2 className="border-b border-slate-300 pb-1 text-base font-bold uppercase text-slate-900">
             {serviceLabel(proposal.service_type, proposal.sub_service)}
@@ -151,6 +152,32 @@ export default function ProposalView() {
           <p className="mt-3 whitespace-pre-line text-justify text-sm leading-relaxed text-slate-800">
             {proposal.description}
           </p>
+
+          {proposal.honorarios_items && proposal.honorarios_items.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-sm font-bold uppercase text-slate-900">
+                Servicios complementarios
+              </h3>
+              <p className="mt-1 text-justify text-sm text-slate-800">
+                Adicionalmente al servicio principal, la presente propuesta
+                contempla los siguientes servicios complementarios:
+              </p>
+              <ol className="mt-3 space-y-3 pl-5">
+                {proposal.honorarios_items.map((item, i) => (
+                  <li key={item.key ?? i} className="text-justify">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {i + 1}. {item.label}
+                    </p>
+                    {item.description && (
+                      <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-800">
+                        {item.description}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </section>
 
         {/* Honorarios Profesionales */}
@@ -159,25 +186,64 @@ export default function ProposalView() {
             Honorarios Profesionales
           </h3>
           <table className="mt-2 w-full border border-slate-300 text-sm">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="border-b border-slate-300 px-3 py-2 text-left font-semibold text-slate-700">
+                  Concepto
+                </th>
+                <th className="border-b border-slate-300 px-3 py-2 text-right font-semibold text-slate-700">
+                  Horas
+                </th>
+                <th className="border-b border-slate-300 px-3 py-2 text-right font-semibold text-slate-700">
+                  Costo/hora
+                </th>
+                <th className="border-b border-slate-300 px-3 py-2 text-right font-semibold text-slate-700">
+                  Subtotal
+                </th>
+              </tr>
+            </thead>
             <tbody>
               <tr className="border-b border-slate-300">
-                <td className="px-3 py-2 text-slate-700">Horas estimadas</td>
-                <td className="px-3 py-2 text-right font-medium text-slate-900">
+                <td className="px-3 py-2 text-slate-800">
+                  {serviceLabel(proposal.service_type, proposal.sub_service)}
+                </td>
+                <td className="px-3 py-2 text-right text-slate-900">
                   {proposal.hours}
                 </td>
-              </tr>
-              <tr className="border-b border-slate-300">
-                <td className="px-3 py-2 text-slate-700">Costo por hora</td>
-                <td className="px-3 py-2 text-right font-medium text-slate-900">
+                <td className="px-3 py-2 text-right text-slate-900">
                   {formatCurrency(proposal.hourly_rate, proposal.currency)}
                 </td>
+                <td className="px-3 py-2 text-right font-medium text-slate-900">
+                  {formatCurrency(proposal.total, proposal.currency)}
+                </td>
               </tr>
+              {proposal.honorarios_items?.map((item, i) => (
+                <tr key={item.key ?? i} className="border-b border-slate-300">
+                  <td className="px-3 py-2 text-slate-800">{item.label}</td>
+                  <td className="px-3 py-2 text-right text-slate-900">
+                    {item.hours}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-900">
+                    {formatCurrency(item.rate, proposal.currency)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium text-slate-900">
+                    {formatCurrency(item.total, proposal.currency)}
+                  </td>
+                </tr>
+              ))}
               <tr className="bg-slate-100">
-                <td className="px-3 py-2 font-bold text-slate-900">
+                <td
+                  colSpan={3}
+                  className="px-3 py-2 font-bold text-slate-900"
+                >
                   Subtotal honorarios
                 </td>
                 <td className="px-3 py-2 text-right text-base font-bold text-slate-900">
-                  {formatCurrency(proposal.total, proposal.currency)}
+                  {formatCurrency(
+                    proposal.total +
+                      honorariosItemsTotal(proposal.honorarios_items ?? []),
+                    proposal.currency,
+                  )}
                 </td>
               </tr>
             </tbody>

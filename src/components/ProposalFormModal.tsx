@@ -1,7 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import Modal from './Modal'
-import { ProposalExpense } from '../lib/api'
-import { SERVICES, findService, findSubService } from '../lib/services'
+import { HonorariosItem, ProposalExpense } from '../lib/api'
+import {
+  AdditiveSubService,
+  SERVICES,
+  findService,
+  findSubService,
+} from '../lib/services'
 
 export interface ProposalFormValues {
   serviceType: string
@@ -12,6 +17,7 @@ export interface ProposalFormValues {
   currency: string
   notes: string
   expenses: ProposalExpense[]
+  honorariosItems: HonorariosItem[]
 }
 
 interface Props {
@@ -22,8 +28,18 @@ interface Props {
 
 interface ExpenseRow {
   label: string
-  amount: string // string para el input controlado
+  amount: string
   checked: boolean
+}
+
+interface AdditiveRow {
+  key: string
+  label: string
+  description: string
+  checked: boolean
+  hours: string
+  rate: string
+  expense: string
 }
 
 const DEFAULT_EXPENSES: ExpenseRow[] = [
@@ -33,6 +49,20 @@ const DEFAULT_EXPENSES: ExpenseRow[] = [
   { label: 'Copias certificadas', amount: '20', checked: false },
   { label: 'Habilitación', amount: '', checked: false },
 ]
+
+function buildAdditiveRows(serviceKey: string): AdditiveRow[] {
+  const svc = findService(serviceKey)
+  if (!svc?.additiveSubServices) return []
+  return svc.additiveSubServices.map((sub: AdditiveSubService) => ({
+    key: sub.key,
+    label: sub.label,
+    description: sub.description,
+    checked: false,
+    hours: '',
+    rate: '',
+    expense: sub.suggestedExpense != null ? String(sub.suggestedExpense) : '',
+  }))
+}
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('es-VE', {
@@ -50,11 +80,13 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
   const [currency, setCurrency] = useState<string>('USD')
   const [notes, setNotes] = useState<string>('')
   const [expenses, setExpenses] = useState<ExpenseRow[]>(DEFAULT_EXPENSES)
+  const [additiveRows, setAdditiveRows] = useState<AdditiveRow[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const service = findService(serviceType)
   const hasSubServices = (service?.subServices?.length ?? 0) > 0
+  const hasAdditives = (service?.additiveSubServices?.length ?? 0) > 0
 
   // Reset al abrir
   useEffect(() => {
@@ -70,6 +102,7 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
     setCurrency('USD')
     setNotes('')
     setExpenses(DEFAULT_EXPENSES.map((e) => ({ ...e })))
+    setAdditiveRows(buildAdditiveRows(first.key))
     setError(null)
   }, [open])
 
@@ -84,6 +117,7 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
       setSubService('')
       setDescription(svc?.description ?? '')
     }
+    setAdditiveRows(buildAdditiveRows(key))
   }
 
   const handleSubServiceChange = (key: string) => {
@@ -98,19 +132,54 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
     )
   }
 
-  const honorariosTotal = useMemo(() => {
+  const updateAdditive = (index: number, patch: Partial<AdditiveRow>) => {
+    setAdditiveRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    )
+  }
+
+  const honorariosPrincipal = useMemo(() => {
     const h = parseFloat(hours)
     const r = parseFloat(hourlyRate)
     if (isNaN(h) || isNaN(r)) return 0
     return +(h * r).toFixed(2)
   }, [hours, hourlyRate])
 
-  const gastosTotal = useMemo(() => {
+  const honorariosComplementarios = useMemo(() => {
+    return +additiveRows
+      .filter((a) => a.checked)
+      .reduce((acc, a) => {
+        const h = parseFloat(a.hours)
+        const r = parseFloat(a.rate)
+        if (isNaN(h) || isNaN(r)) return acc
+        return acc + h * r
+      }, 0)
+      .toFixed(2)
+  }, [additiveRows])
+
+  const honorariosTotal = useMemo(
+    () => +(honorariosPrincipal + honorariosComplementarios).toFixed(2),
+    [honorariosPrincipal, honorariosComplementarios],
+  )
+
+  const gastosPredeterminados = useMemo(() => {
     return +expenses
       .filter((e) => e.checked)
       .reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
       .toFixed(2)
   }, [expenses])
+
+  const gastosComplementarios = useMemo(() => {
+    return +additiveRows
+      .filter((a) => a.checked)
+      .reduce((acc, a) => acc + (parseFloat(a.expense) || 0), 0)
+      .toFixed(2)
+  }, [additiveRows])
+
+  const gastosTotal = useMemo(
+    () => +(gastosPredeterminados + gastosComplementarios).toFixed(2),
+    [gastosPredeterminados, gastosComplementarios],
+  )
 
   const grandTotal = useMemo(
     () => +(honorariosTotal + gastosTotal).toFixed(2),
@@ -122,18 +191,52 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
     const h = parseFloat(hours)
     const r = parseFloat(hourlyRate)
     if (isNaN(h) || h <= 0) {
-      setError('Indica un número de horas válido.')
+      setError('Indica un número de horas válido para los honorarios principales.')
       return
     }
     if (isNaN(r) || r < 0) {
-      setError('Indica un costo por hora válido.')
+      setError('Indica un costo por hora válido para los honorarios principales.')
       return
     }
     if (!description.trim()) {
       setError('La descripción no puede estar vacía.')
       return
     }
-    // Validar gastos seleccionados: deben tener monto numérico ≥ 0
+
+    // Validar y construir items complementarios
+    const honorariosItems: HonorariosItem[] = []
+    const additiveExpenses: ProposalExpense[] = []
+    for (const row of additiveRows) {
+      if (!row.checked) continue
+      const ah = parseFloat(row.hours)
+      const ar = parseFloat(row.rate)
+      if (isNaN(ah) || ah <= 0) {
+        setError(`Indica las horas para "${row.label}".`)
+        return
+      }
+      if (isNaN(ar) || ar < 0) {
+        setError(`Indica el costo por hora para "${row.label}".`)
+        return
+      }
+      const itemTotal = +(ah * ar).toFixed(2)
+      honorariosItems.push({
+        key: row.key,
+        label: row.label,
+        description: row.description,
+        hours: ah,
+        rate: ar,
+        total: itemTotal,
+      })
+      const expAmt = parseFloat(row.expense)
+      if (!isNaN(expAmt) && expAmt > 0) {
+        additiveExpenses.push({
+          label: `${row.label} (gastos)`,
+          amount: +expAmt.toFixed(2),
+        })
+      }
+    }
+
+    // Validar gastos predeterminados marcados
     const selectedExpenses: ProposalExpense[] = []
     for (const row of expenses) {
       if (!row.checked) continue
@@ -144,6 +247,7 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
       }
       selectedExpenses.push({ label: row.label, amount: +amt.toFixed(2) })
     }
+
     try {
       setSubmitting(true)
       setError(null)
@@ -155,7 +259,8 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
         hourlyRate: r,
         currency: currency.trim() || 'USD',
         notes: notes.trim(),
-        expenses: selectedExpenses,
+        expenses: [...selectedExpenses, ...additiveExpenses],
+        honorariosItems,
       })
       onClose()
     } catch (err) {
@@ -167,6 +272,8 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
 
   const inputClass =
     'w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
+  const smallInputClass =
+    'w-full rounded-md border border-slate-300 px-2 py-1 text-right text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400'
 
   const cur = currency || 'USD'
 
@@ -272,13 +379,107 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
           </div>
           <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-3 py-2">
             <span className="text-xs font-medium text-slate-600">
-              Subtotal honorarios
+              Subtotal honorarios principales
             </span>
             <span className="text-sm font-bold text-slate-900">
-              {cur} {formatMoney(honorariosTotal)}
+              {cur} {formatMoney(honorariosPrincipal)}
             </span>
           </div>
         </fieldset>
+
+        {/* ---------- TARJETA: SERVICIOS COMPLEMENTARIOS ---------- */}
+        {hasAdditives && (
+          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <legend className="px-2 text-sm font-semibold text-slate-700">
+              Servicios complementarios
+            </legend>
+            <p className="mb-3 text-xs text-slate-500">
+              Marca los servicios adicionales que se incluirán. Cada uno tiene sus
+              propios honorarios y gasto sugerido editables.
+            </p>
+            <ul className="space-y-3">
+              {additiveRows.map((row, i) => (
+                <li
+                  key={row.key}
+                  className="rounded-lg border border-slate-200 bg-white p-3"
+                >
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={row.checked}
+                      onChange={(e) =>
+                        updateAdditive(i, { checked: e.target.checked })
+                      }
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm font-medium text-slate-800">
+                      {row.label}
+                    </span>
+                  </label>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-medium uppercase text-slate-500">
+                        Horas
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        value={row.hours}
+                        onChange={(e) =>
+                          updateAdditive(i, { hours: e.target.value })
+                        }
+                        disabled={!row.checked}
+                        className={smallInputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-medium uppercase text-slate-500">
+                        Costo/hora
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.rate}
+                        onChange={(e) =>
+                          updateAdditive(i, { rate: e.target.value })
+                        }
+                        disabled={!row.checked}
+                        className={smallInputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-medium uppercase text-slate-500">
+                        Gasto
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.expense}
+                        onChange={(e) =>
+                          updateAdditive(i, { expense: e.target.value })
+                        }
+                        disabled={!row.checked}
+                        className={smallInputClass}
+                      />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-3 py-2">
+              <span className="text-xs font-medium text-slate-600">
+                Subtotal servicios complementarios
+              </span>
+              <span className="text-sm font-bold text-slate-900">
+                {cur}{' '}
+                {formatMoney(honorariosComplementarios + gastosComplementarios)}
+              </span>
+            </div>
+          </fieldset>
+        )}
 
         {/* ---------- TARJETA: GASTOS ---------- */}
         <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -326,24 +527,36 @@ export default function ProposalFormModal({ open, onClose, onSubmit }: Props) {
           </ul>
           <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-3 py-2">
             <span className="text-xs font-medium text-slate-600">
-              Subtotal gastos
+              Subtotal gastos predeterminados
             </span>
             <span className="text-sm font-bold text-slate-900">
-              {cur} {formatMoney(gastosTotal)}
+              {cur} {formatMoney(gastosPredeterminados)}
             </span>
           </div>
         </fieldset>
 
         {/* TOTAL GENERAL */}
         <div className="rounded-xl bg-indigo-50 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-indigo-900">
-              Total general
-            </span>
-            <span className="text-xl font-bold text-indigo-900">
-              {cur} {formatMoney(grandTotal)}
-            </span>
-          </div>
+          <dl className="space-y-1 text-sm">
+            <div className="flex justify-between text-slate-700">
+              <dt>Honorarios totales</dt>
+              <dd className="font-medium">
+                {cur} {formatMoney(honorariosTotal)}
+              </dd>
+            </div>
+            <div className="flex justify-between text-slate-700">
+              <dt>Gastos totales</dt>
+              <dd className="font-medium">
+                {cur} {formatMoney(gastosTotal)}
+              </dd>
+            </div>
+            <div className="flex justify-between border-t border-indigo-200 pt-2 text-indigo-900">
+              <dt className="text-base font-bold">Total general</dt>
+              <dd className="text-xl font-bold">
+                {cur} {formatMoney(grandTotal)}
+              </dd>
+            </div>
+          </dl>
         </div>
 
         <div>
