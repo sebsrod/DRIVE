@@ -2,6 +2,16 @@ import { supabase, PERSONAL_BUCKET, SHARED_BUCKET } from './supabase'
 
 export type Scope = 'private' | 'team'
 
+export interface Profile {
+  id: string
+  email: string
+  full_name: string | null
+  phone: string | null
+  ipsa_number: string | null
+  role: 'member' | 'admin'
+  created_at: string
+}
+
 export interface Client {
   id: string
   name: string
@@ -30,6 +40,21 @@ export interface DocumentRow {
   subfolder_id: string | null
   scope: Scope
   owner_id: string
+  created_at: string
+}
+
+export interface Proposal {
+  id: string
+  client_id: string
+  owner_id: string
+  service_type: string
+  sub_service: string | null
+  description: string
+  hours: number
+  hourly_rate: number
+  total: number
+  currency: string
+  notes: string | null
   created_at: string
 }
 
@@ -264,6 +289,116 @@ export async function deleteDocument(doc: DocumentRow): Promise<void> {
   if (storageError) throw storageError
   const { error } = await supabase.from('documents').delete().eq('id', doc.id)
   if (error) throw error
+}
+
+// ---------- PERFILES ----------
+
+export async function getProfile(userId: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return (data as Profile) ?? null
+}
+
+export async function upsertProfile(
+  userId: string,
+  email: string,
+  values: {
+    full_name: string | null
+    phone: string | null
+    ipsa_number: string | null
+  },
+): Promise<Profile> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        email,
+        full_name: values.full_name,
+        phone: values.phone,
+        ipsa_number: values.ipsa_number,
+      },
+      { onConflict: 'id' },
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return data as Profile
+}
+
+// ---------- PROPUESTAS ----------
+
+export async function listClientProposals(clientId: string): Promise<Proposal[]> {
+  const { data, error } = await supabase
+    .from('proposals')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as Proposal[]
+}
+
+export async function getProposal(proposalId: string): Promise<Proposal | null> {
+  const { data, error } = await supabase
+    .from('proposals')
+    .select('*')
+    .eq('id', proposalId)
+    .maybeSingle()
+  if (error) throw error
+  return (data as Proposal) ?? null
+}
+
+interface CreateProposalParams {
+  clientId: string
+  ownerId: string
+  serviceType: string
+  subService: string | null
+  description: string
+  hours: number
+  hourlyRate: number
+  currency: string
+  notes: string | null
+}
+
+export async function createProposal(
+  params: CreateProposalParams,
+): Promise<Proposal> {
+  const total = +(params.hours * params.hourlyRate).toFixed(2)
+  const { data, error } = await supabase
+    .from('proposals')
+    .insert({
+      client_id: params.clientId,
+      owner_id: params.ownerId,
+      service_type: params.serviceType,
+      sub_service: params.subService,
+      description: params.description,
+      hours: params.hours,
+      hourly_rate: params.hourlyRate,
+      total,
+      currency: params.currency,
+      notes: params.notes,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Proposal
+}
+
+export async function deleteProposal(id: string): Promise<void> {
+  const { error } = await supabase.from('proposals').delete().eq('id', id)
+  if (error) throw error
+}
+
+export function formatCurrency(amount: number, currency: string): string {
+  const formatted = new Intl.NumberFormat('es-VE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+  return `${currency} ${formatted}`
 }
 
 export function formatSize(bytes: number | null): string {

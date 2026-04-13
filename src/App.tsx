@@ -7,6 +7,8 @@ import Signup from './pages/Signup'
 import ClientsList from './pages/ClientsList'
 import ClientView from './pages/ClientView'
 import SubfolderView from './pages/SubfolderView'
+import Profile from './pages/Profile'
+import ProposalView from './pages/ProposalView'
 
 export default function App() {
   const { loading } = useAuth()
@@ -40,6 +42,11 @@ export default function App() {
           path="/ejercicio/:scope/clientes/:clientId/carpetas/:folderId"
           element={<SubfolderView />}
         />
+        <Route
+          path="/ejercicio/:scope/clientes/:clientId/propuestas/:proposalId"
+          element={<ProposalView />}
+        />
+        <Route path="/perfil" element={<Profile />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

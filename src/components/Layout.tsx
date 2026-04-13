@@ -87,6 +87,9 @@ export default function Layout() {
           <NavLink to="/ejercicio/equipo" className={linkClass}>
             Ejercicio en equipo
           </NavLink>
+          <NavLink to="/perfil" className={linkClass}>
+            Perfil
+          </NavLink>
         </nav>
         <div className="mt-auto border-t border-slate-200 pt-4">
           <p className="truncate px-2 text-xs text-slate-500">{user?.email}</p>
