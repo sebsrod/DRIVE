@@ -81,11 +81,11 @@ export default function Layout() {
           Office Drive
         </h1>
         <nav className="flex flex-col gap-1">
-          <NavLink to="/mis-documentos" className={linkClass}>
-            Mis documentos
+          <NavLink to="/ejercicio/privado" className={linkClass}>
+            Ejercicio privado
           </NavLink>
-          <NavLink to="/carpetas" className={linkClass}>
-            Carpetas compartidas
+          <NavLink to="/ejercicio/equipo" className={linkClass}>
+            Ejercicio en equipo
           </NavLink>
         </nav>
         <div className="mt-auto border-t border-slate-200 pt-4">

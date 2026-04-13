@@ -4,7 +4,7 @@ import {
   deleteDocument,
   formatSize,
   getDocumentDownloadUrl,
-} from '../lib/documents'
+} from '../lib/api'
 
 interface Props {
   documents: DocumentRow[]

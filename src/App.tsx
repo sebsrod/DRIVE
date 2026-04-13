@@ -4,9 +4,9 @@ import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import MyDocuments from './pages/MyDocuments'
-import SharedFolders from './pages/SharedFolders'
-import FolderView from './pages/FolderView'
+import ClientsList from './pages/ClientsList'
+import ClientView from './pages/ClientView'
+import SubfolderView from './pages/SubfolderView'
 
 export default function App() {
   const { loading } = useAuth()
@@ -30,10 +30,16 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/mis-documentos" replace />} />
-        <Route path="/mis-documentos" element={<MyDocuments />} />
-        <Route path="/carpetas" element={<SharedFolders />} />
-        <Route path="/carpetas/:folderId" element={<FolderView />} />
+        <Route path="/" element={<Navigate to="/ejercicio/privado" replace />} />
+        <Route path="/ejercicio/:scope" element={<ClientsList />} />
+        <Route
+          path="/ejercicio/:scope/clientes/:clientId"
+          element={<ClientView />}
+        />
+        <Route
+          path="/ejercicio/:scope/clientes/:clientId/carpetas/:folderId"
+          element={<SubfolderView />}
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
