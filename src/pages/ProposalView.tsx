@@ -4,10 +4,12 @@ import {
   Client,
   Profile,
   Proposal,
+  expensesTotal,
   formatCurrency,
   getClient,
   getProfile,
   getProposal,
+  proposalGrandTotal,
 } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
 import { serviceLabel } from '../lib/services'
@@ -151,9 +153,11 @@ export default function ProposalView() {
           </p>
         </section>
 
-        {/* Honorarios */}
+        {/* Honorarios Profesionales */}
         <section className="mt-6">
-          <h3 className="text-sm font-bold uppercase text-slate-900">Honorarios</h3>
+          <h3 className="text-sm font-bold uppercase text-slate-900">
+            Honorarios Profesionales
+          </h3>
           <table className="mt-2 w-full border border-slate-300 text-sm">
             <tbody>
               <tr className="border-b border-slate-300">
@@ -169,9 +173,55 @@ export default function ProposalView() {
                 </td>
               </tr>
               <tr className="bg-slate-100">
-                <td className="px-3 py-2 font-bold text-slate-900">Total</td>
+                <td className="px-3 py-2 font-bold text-slate-900">
+                  Subtotal honorarios
+                </td>
                 <td className="px-3 py-2 text-right text-base font-bold text-slate-900">
                   {formatCurrency(proposal.total, proposal.currency)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        {/* Gastos */}
+        {proposal.expenses && proposal.expenses.length > 0 && (
+          <section className="mt-6">
+            <h3 className="text-sm font-bold uppercase text-slate-900">Gastos</h3>
+            <table className="mt-2 w-full border border-slate-300 text-sm">
+              <tbody>
+                {proposal.expenses.map((e, i) => (
+                  <tr key={i} className="border-b border-slate-300">
+                    <td className="px-3 py-2 text-slate-700">{e.label}</td>
+                    <td className="px-3 py-2 text-right font-medium text-slate-900">
+                      {formatCurrency(e.amount, proposal.currency)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-slate-100">
+                  <td className="px-3 py-2 font-bold text-slate-900">
+                    Subtotal gastos
+                  </td>
+                  <td className="px-3 py-2 text-right text-base font-bold text-slate-900">
+                    {formatCurrency(
+                      expensesTotal(proposal.expenses),
+                      proposal.currency,
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {/* Total general */}
+        <section className="mt-6">
+          <table className="w-full border border-slate-700 text-sm">
+            <tbody>
+              <tr className="bg-slate-800 text-white">
+                <td className="px-3 py-3 font-bold uppercase">Total general</td>
+                <td className="px-3 py-3 text-right text-lg font-bold">
+                  {formatCurrency(proposalGrandTotal(proposal), proposal.currency)}
                 </td>
               </tr>
             </tbody>

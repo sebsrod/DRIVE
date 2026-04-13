@@ -43,6 +43,11 @@ export interface DocumentRow {
   created_at: string
 }
 
+export interface ProposalExpense {
+  label: string
+  amount: number
+}
+
 export interface Proposal {
   id: string
   client_id: string
@@ -55,6 +60,7 @@ export interface Proposal {
   total: number
   currency: string
   notes: string | null
+  expenses: ProposalExpense[]
   created_at: string
 }
 
@@ -362,6 +368,7 @@ interface CreateProposalParams {
   hourlyRate: number
   currency: string
   notes: string | null
+  expenses: ProposalExpense[]
 }
 
 export async function createProposal(
@@ -381,11 +388,20 @@ export async function createProposal(
       total,
       currency: params.currency,
       notes: params.notes,
+      expenses: params.expenses,
     })
     .select()
     .single()
   if (error) throw error
   return data as Proposal
+}
+
+export function expensesTotal(expenses: ProposalExpense[]): number {
+  return +expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0).toFixed(2)
+}
+
+export function proposalGrandTotal(p: Proposal): number {
+  return +(Number(p.total) + expensesTotal(p.expenses ?? [])).toFixed(2)
 }
 
 export async function deleteProposal(id: string): Promise<void> {

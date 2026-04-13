@@ -15,6 +15,7 @@ import {
   listClientDocuments,
   listClientFolders,
   listClientProposals,
+  proposalGrandTotal,
   scopeFromSlug,
   slugFromScope,
   uploadDocument,
@@ -105,6 +106,7 @@ export default function ClientView() {
       hourlyRate: values.hourlyRate,
       currency: values.currency,
       notes: values.notes || null,
+      expenses: values.expenses,
     })
     await refresh()
   }
@@ -208,7 +210,7 @@ export default function ClientView() {
                       </Link>
                       <p className="text-xs text-slate-500">
                         {new Date(p.created_at).toLocaleDateString()} ·{' '}
-                        {formatCurrency(p.total, p.currency)}
+                        {formatCurrency(proposalGrandTotal(p), p.currency)}
                       </p>
                     </div>
                     {p.owner_id === user.id && (
