@@ -1,17 +1,37 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import WelcomeModal from './WelcomeModal'
+
+const WELCOME_KEY_PREFIX = 'office-drive:welcome-dismissed:'
 
 export default function Layout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const [welcomeOpen, setWelcomeOpen] = useState(false)
 
   // Cerrar el sidebar al cambiar de ruta (en móvil)
   useEffect(() => {
     setOpen(false)
   }, [location.pathname])
+
+  // Mostrar el manual de bienvenida la primera vez que el usuario entra,
+  // a menos que haya marcado "No mostrar más" antes.
+  useEffect(() => {
+    if (!user) return
+    const dismissed =
+      localStorage.getItem(`${WELCOME_KEY_PREFIX}${user.id}`) === '1'
+    if (!dismissed) setWelcomeOpen(true)
+  }, [user])
+
+  const handleWelcomeClose = (dontShowAgain: boolean) => {
+    if (user && dontShowAgain) {
+      localStorage.setItem(`${WELCOME_KEY_PREFIX}${user.id}`, '1')
+    }
+    setWelcomeOpen(false)
+  }
 
   const handleSignOut = async () => {
     await signOut()
@@ -90,6 +110,9 @@ export default function Layout() {
           <NavLink to="/perfil" className={linkClass}>
             Perfil
           </NavLink>
+          <NavLink to="/manual" className={linkClass}>
+            Manual
+          </NavLink>
         </nav>
         <div className="mt-auto border-t border-slate-200 pt-4">
           <p className="truncate px-2 text-xs text-slate-500">{user?.email}</p>
@@ -105,6 +128,8 @@ export default function Layout() {
       <main className="min-w-0 flex-1 overflow-auto p-4 md:p-8">
         <Outlet />
       </main>
+
+      <WelcomeModal open={welcomeOpen} onClose={handleWelcomeClose} />
     </div>
   )
 }

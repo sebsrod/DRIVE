@@ -9,6 +9,7 @@ import ClientView from './pages/ClientView'
 import SubfolderView from './pages/SubfolderView'
 import Profile from './pages/Profile'
 import ProposalView from './pages/ProposalView'
+import Manual from './pages/Manual'
 
 export default function App() {
   const { loading } = useAuth()
@@ -47,6 +48,7 @@ export default function App() {
           element={<ProposalView />}
         />
         <Route path="/perfil" element={<Profile />} />
+        <Route path="/manual" element={<Manual />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
