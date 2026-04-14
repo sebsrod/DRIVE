@@ -13,30 +13,52 @@ body {
 }
 
 @media print {
-  /* Ocultar el sidebar, topbar móvil y cualquier UI marcada como no-print */
+  /* -------- Reset de página -------- */
+  @page {
+    size: auto;
+    margin: 0;
+  }
+
+  /* -------- Aplanar contenedores del layout --------
+     El layout usa flex, min-h-screen y overflow-auto, que pueden
+     recortar o comprimir el contenido al imprimir. Forzamos que cada
+     contenedor se comporte como un bloque natural sin limitar altura
+     ni ancho.                                                     */
+  html,
+  body,
+  #root,
+  #root > div,
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: white !important;
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    flex: initial !important;
+  }
+
+  /* -------- Ocultar UI interactiva -------- */
   aside,
   header.md\:hidden,
   .no-print {
     display: none !important;
   }
-  body,
-  main {
-    background: white !important;
-  }
-  main {
-    padding: 0 !important;
-  }
-  /* margin 0 en @page para que el navegador no imprima sus headers
-     (título de la página) ni footers (URL). El margen de la hoja se
-     compensa con padding propio en .print-sheet. */
-  @page {
-    margin: 0;
-    size: auto;
-  }
+
+  /* -------- Hoja imprimible --------
+     padding: 1in da exactamente una pulgada de margen en los cuatro
+     lados, porque el @page está a 0 y no hay padding en los padres. */
   .print-sheet {
+    display: block !important;
     box-shadow: none !important;
     max-width: none !important;
-    /* 1 pulgada en todos los lados */
+    width: auto !important;
+    margin: 0 !important;
     padding: 1in !important;
+    background: white !important;
   }
 }
