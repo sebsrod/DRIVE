@@ -21,7 +21,7 @@ export default function Modal({ open, onClose, title, children }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/50 p-0 sm:items-center sm:p-4"
+      className="no-print fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/50 p-0 sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
