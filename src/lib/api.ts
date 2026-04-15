@@ -40,6 +40,7 @@ export interface DocumentRow {
   subfolder_id: string | null
   scope: Scope
   owner_id: string
+  is_fundamental: boolean
   created_at: string
 }
 
@@ -229,12 +230,27 @@ export async function deleteClientFolder(
 // ---------- DOCUMENTOS ----------
 
 export async function listClientDocuments(clientId: string): Promise<DocumentRow[]> {
-  // documentos en la raíz del cliente (subfolder_id = null)
+  // documentos en la raíz del cliente (subfolder_id = null) que no son
+  // fundamentales (los fundamentales tienen su propia sección)
   const { data, error } = await supabase
     .from('documents')
     .select('*')
     .eq('client_id', clientId)
     .is('subfolder_id', null)
+    .eq('is_fundamental', false)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DocumentRow[]
+}
+
+export async function listFundamentalDocuments(
+  clientId: string,
+): Promise<DocumentRow[]> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('is_fundamental', true)
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as DocumentRow[]
@@ -257,6 +273,7 @@ interface UploadParams {
   client: Client
   subfolderId: string | null
   ownerId: string
+  isFundamental?: boolean
 }
 
 export async function uploadDocument({
@@ -264,9 +281,12 @@ export async function uploadDocument({
   client,
   subfolderId,
   ownerId,
+  isFundamental = false,
 }: UploadParams): Promise<DocumentRow> {
   const bucket = bucketForScope(client.scope)
-  const folderSegment = subfolderId ?? '_root'
+  const folderSegment = isFundamental
+    ? '_fundamental'
+    : subfolderId ?? '_root'
   // Para el bucket personal, el primer segmento DEBE ser el user id (RLS)
   const prefix =
     client.scope === 'private' ? `${ownerId}/${client.id}` : `${client.id}`
@@ -285,14 +305,127 @@ export async function uploadDocument({
       size: file.size,
       mime_type: file.type,
       client_id: client.id,
-      subfolder_id: subfolderId,
+      subfolder_id: isFundamental ? null : subfolderId,
       scope: client.scope,
       owner_id: ownerId,
+      is_fundamental: isFundamental,
     })
     .select()
     .single()
   if (error) throw error
   return data as DocumentRow
+}
+
+// ---------- GENERACIÓN DE DOCUMENTOS CON GEMINI ----------
+
+export interface GeneratedAttachment {
+  filename: string
+  mimeType: string
+  base64: string
+}
+
+export async function downloadDocumentAsBase64(
+  doc: DocumentRow,
+): Promise<GeneratedAttachment> {
+  const bucket = bucketForScope(doc.scope)
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .download(doc.storage_path)
+  if (error) throw error
+  const base64 = await blobToBase64(data)
+  return {
+    filename: doc.name,
+    mimeType: doc.mime_type ?? 'application/octet-stream',
+    base64,
+  }
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.includes(',') ? result.split(',')[1] : result
+      resolve(base64)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Error leyendo archivo'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+export interface GenerateDocumentInput {
+  documentType: string
+  params: Record<string, unknown>
+  client: Client
+  author: Profile | null
+  officeAddress: string
+  attachments: GeneratedAttachment[]
+}
+
+export async function generateDocumentWithAI(
+  input: GenerateDocumentInput,
+): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('No hay sesión activa.')
+
+  const res = await fetch('/api/generate-document', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      documentType: input.documentType,
+      params: input.params,
+      client: {
+        name: input.client.name,
+        cedula_rif: input.client.cedula_rif,
+        phone: input.client.phone,
+        address: input.client.address,
+      },
+      author: {
+        full_name: input.author?.full_name ?? null,
+        ipsa_number: input.author?.ipsa_number ?? null,
+        phone: input.author?.phone ?? null,
+        email: input.author?.email ?? null,
+      },
+      officeAddress: input.officeAddress,
+      attachments: input.attachments,
+    }),
+  })
+  if (!res.ok) {
+    let err = `HTTP ${res.status}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) err = body.error
+    } catch {
+      // ignore
+    }
+    throw new Error(err)
+  }
+  const data = (await res.json()) as { text: string }
+  return data.text
+}
+
+export async function saveGeneratedDocumentAsFile(
+  text: string,
+  filename: string,
+  client: Client,
+  ownerId: string,
+): Promise<DocumentRow> {
+  const safe = filename.replace(/[^a-zA-Z0-9._-]+/g, '_') || 'documento'
+  const fullName = safe.endsWith('.txt') ? safe : `${safe}.txt`
+  const file = new File([text], fullName, { type: 'text/plain;charset=utf-8' })
+  return uploadDocument({
+    file,
+    client,
+    subfolderId: null,
+    ownerId,
+    isFundamental: false,
+  })
 }
 
 export async function getDocumentDownloadUrl(doc: DocumentRow): Promise<string> {

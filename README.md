@@ -6,8 +6,85 @@ Web app para gestión de documentos de oficina. Cada colaborador tiene un usuari
 
 - **Frontend**: Vite + React + TypeScript + Tailwind CSS
 - **Base de datos, Auth y Storage**: [Supabase](https://supabase.com)
+- **IA (generación de documentos)**: Google Gemini vía Cloudflare Pages Functions
 - **Deploy**: [Cloudflare Pages](https://pages.cloudflare.com)
 - **Repo**: GitHub
+
+## Variables de entorno
+
+La app usa dos grupos de variables. Todas se configuran en **Cloudflare
+Pages → Settings → Variables and Secrets**. Ninguna clave se escribe
+nunca en el repo ni en el bundle del frontend.
+
+### Frontend (build-time, Vite)
+
+Se exponen al bundle porque se necesitan en el navegador. No son
+secretas (las protege Supabase RLS):
+
+| Variable                  | Valor                                              |
+|---------------------------|----------------------------------------------------|
+| `VITE_SUPABASE_URL`       | URL del proyecto de Supabase (Project Settings → API) |
+| `VITE_SUPABASE_ANON_KEY`  | `anon public key` del proyecto de Supabase         |
+
+### Backend (runtime, Cloudflare Pages Function)
+
+Se usan desde `functions/api/generate-document.ts`, jamás llegan al
+frontend. La función las lee por `context.env.*`:
+
+| Variable             | Valor                                                                   |
+|----------------------|-------------------------------------------------------------------------|
+| `GEMINI_API_KEY`     | Token de Google AI Studio. **Marcar como Secret**.                      |
+| `GEMINI_PRO_MODEL`   | (opcional) override del modelo Pro. Default: `gemini-3.1-pro`.          |
+| `GEMINI_FLASH_MODEL` | (opcional) override del modelo Flash para OCR. Default: `gemini-2.5-flash`. |
+
+> La función también lee `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
+> para validar el JWT del usuario antes de llamar a Gemini, así que
+> esas dos ya están cubiertas con la configuración del frontend.
+
+### Cómo obtener el token de Gemini
+
+1. Entra a [Google AI Studio](https://aistudio.google.com/).
+2. Selecciona el proyecto de Google Cloud donde quieras facturar.
+3. En el menú lateral elige **Get API key** → **Create API key**.
+4. Copia el token y guárdalo como **Secret** en Cloudflare (más abajo).
+
+### Cómo añadirlas en Cloudflare Pages
+
+1. Entra a tu proyecto en Cloudflare Dashboard → **Workers & Pages** →
+   tu proyecto → **Settings → Variables and Secrets**.
+2. Pulsa **Add** y añade cada variable:
+   - `GEMINI_API_KEY` → Type: **Secret** (para que quede cifrada y no
+     sea legible después de crearla)
+   - `GEMINI_PRO_MODEL` → Type: **Plaintext** (opcional)
+   - `GEMINI_FLASH_MODEL` → Type: **Plaintext** (opcional)
+3. Asegúrate de que estén en el scope de **Production**. Si también
+   quieres probar en deploys de preview, márcalas para **Preview**.
+4. Pulsa **Save**.
+5. Lanza un nuevo deploy (Retry deployment o push nuevo). Las env vars
+   se aplican solo a builds nuevos.
+
+### En desarrollo local
+
+Para probar la función `functions/api/generate-document.ts` en local,
+instala wrangler y crea un archivo `.dev.vars` (está en `.gitignore`):
+
+```bash
+npm install -g wrangler
+
+cat > .dev.vars <<EOF
+GEMINI_API_KEY=tu-token-de-google-ai-studio
+VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
+VITE_SUPABASE_ANON_KEY=tu-anon-key
+EOF
+
+wrangler pages dev -- npm run dev
+```
+
+`wrangler pages dev` sirve tu app Vite y además expone la Pages
+Function en `/api/generate-document`, pasándole las variables de
+`.dev.vars` por `context.env`. Nunca hace falta poner el token de
+Gemini en el código, en un `.env.local`, ni en el bundle del
+navegador.
 
 ## Funcionalidades
 

@@ -15,6 +15,7 @@ import {
   listClientDocuments,
   listClientFolders,
   listClientProposals,
+  listFundamentalDocuments,
   proposalGrandTotal,
   scopeFromSlug,
   slugFromScope,
@@ -27,6 +28,7 @@ import FolderFormModal from '../components/FolderFormModal'
 import ProposalFormModal, {
   ProposalFormValues,
 } from '../components/ProposalFormModal'
+import GenerateDocumentModal from '../components/GenerateDocumentModal'
 
 export default function ClientView() {
   const { scope: scopeSlug, clientId } = useParams<{
@@ -39,25 +41,29 @@ export default function ClientView() {
   const [client, setClient] = useState<Client | null>(null)
   const [folders, setFolders] = useState<ClientFolder[]>([])
   const [documents, setDocuments] = useState<DocumentRow[]>([])
+  const [fundamentalDocs, setFundamentalDocs] = useState<DocumentRow[]>([])
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [folderModalOpen, setFolderModalOpen] = useState(false)
   const [proposalModalOpen, setProposalModalOpen] = useState(false)
+  const [generateModalOpen, setGenerateModalOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     if (!clientId) return
     try {
       setLoading(true)
-      const [c, f, d, p] = await Promise.all([
+      const [c, f, d, fd, p] = await Promise.all([
         getClient(clientId),
         listClientFolders(clientId),
         listClientDocuments(clientId),
+        listFundamentalDocuments(clientId),
         listClientProposals(clientId),
       ])
       setClient(c)
       setFolders(f)
       setDocuments(d)
+      setFundamentalDocs(fd)
       setProposals(p)
       setError(null)
     } catch (err) {
@@ -74,6 +80,18 @@ export default function ClientView() {
   const handleUpload = async (file: File) => {
     if (!user || !client) return
     await uploadDocument({ file, client, subfolderId: null, ownerId: user.id })
+    await refresh()
+  }
+
+  const handleUploadFundamental = async (file: File) => {
+    if (!user || !client) return
+    await uploadDocument({
+      file,
+      client,
+      subfolderId: null,
+      ownerId: user.id,
+      isFundamental: true,
+    })
     await refresh()
   }
 
@@ -162,7 +180,13 @@ export default function ClientView() {
             </dl>
           )}
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col flex-wrap gap-2 sm:flex-row">
+          <button
+            onClick={() => setGenerateModalOpen(true)}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+          >
+            ✨ Generar documento
+          </button>
           <button
             onClick={() => setProposalModalOpen(true)}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
@@ -185,6 +209,36 @@ export default function ClientView() {
         <p className="text-slate-500">Cargando…</p>
       ) : (
         <>
+          <section className="mb-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Documentos fundamentales
+              </h3>
+              <UploadButton
+                onUpload={handleUploadFundamental}
+                label="+ Subir fundamental"
+              />
+            </div>
+            <p className="mb-3 text-xs text-slate-500">
+              Documento constitutivo, cédulas de los representantes, poderes y
+              demás documentos base. Se usan como contexto al generar nuevos
+              documentos con la IA. Acepta PDF, JPEG y PNG.
+            </p>
+            {fundamentalDocs.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+                Aún no hay documentos fundamentales. Sube el documento
+                constitutivo del cliente y las cédulas de sus representantes
+                para que la IA pueda usar esos datos al redactar documentos.
+              </p>
+            ) : (
+              <DocumentList
+                documents={fundamentalDocs}
+                onChange={refresh}
+                currentUserId={user.id}
+              />
+            )}
+          </section>
+
           <section className="mb-8">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
               Propuestas de Servicios
@@ -288,6 +342,15 @@ export default function ClientView() {
         onClose={() => setProposalModalOpen(false)}
         onSubmit={handleCreateProposal}
       />
+
+      {client && (
+        <GenerateDocumentModal
+          open={generateModalOpen}
+          onClose={() => setGenerateModalOpen(false)}
+          client={client}
+          onSaved={refresh}
+        />
+      )}
     </div>
   )
 }
