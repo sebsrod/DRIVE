@@ -4,7 +4,7 @@ import {
   deleteDocument,
   formatSize,
   getDocumentDownloadUrl,
-} from '../lib/documents'
+} from '../lib/api'
 
 interface Props {
   documents: DocumentRow[]
@@ -50,45 +50,40 @@ export default function DocumentList({ documents, onChange, currentUserId }: Pro
 
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-          <tr>
-            <th className="px-4 py-3">Nombre</th>
-            <th className="px-4 py-3">Tamaño</th>
-            <th className="px-4 py-3">Subido</th>
-            <th className="px-4 py-3 text-right">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {documents.map((doc) => (
-            <tr key={doc.id} className="border-t border-slate-100">
-              <td className="px-4 py-3 font-medium text-slate-800">{doc.name}</td>
-              <td className="px-4 py-3 text-slate-600">{formatSize(doc.size)}</td>
-              <td className="px-4 py-3 text-slate-600">
+      <ul className="divide-y divide-slate-100">
+        {documents.map((doc) => (
+          <li
+            key={doc.id}
+            className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-slate-800">{doc.name}</p>
+              <p className="text-xs text-slate-500">
+                {formatSize(doc.size)} ·{' '}
                 {new Date(doc.created_at).toLocaleDateString()}
-              </td>
-              <td className="px-4 py-3 text-right">
+              </p>
+            </div>
+            <div className="flex flex-shrink-0 gap-2">
+              <button
+                onClick={() => handleDownload(doc)}
+                disabled={busyId === doc.id}
+                className="rounded-md bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+              >
+                Descargar
+              </button>
+              {doc.owner_id === currentUserId && (
                 <button
-                  onClick={() => handleDownload(doc)}
+                  onClick={() => handleDelete(doc)}
                   disabled={busyId === doc.id}
-                  className="mr-2 rounded-md bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                  className="rounded-md bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
                 >
-                  Descargar
+                  Eliminar
                 </button>
-                {doc.owner_id === currentUserId && (
-                  <button
-                    onClick={() => handleDelete(doc)}
-                    disabled={busyId === doc.id}
-                    className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-                  >
-                    Eliminar
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -4,9 +4,12 @@ import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import MyDocuments from './pages/MyDocuments'
-import SharedFolders from './pages/SharedFolders'
-import FolderView from './pages/FolderView'
+import ClientsList from './pages/ClientsList'
+import ClientView from './pages/ClientView'
+import SubfolderView from './pages/SubfolderView'
+import Profile from './pages/Profile'
+import ProposalView from './pages/ProposalView'
+import Manual from './pages/Manual'
 
 export default function App() {
   const { loading } = useAuth()
@@ -30,10 +33,22 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/mis-documentos" replace />} />
-        <Route path="/mis-documentos" element={<MyDocuments />} />
-        <Route path="/carpetas" element={<SharedFolders />} />
-        <Route path="/carpetas/:folderId" element={<FolderView />} />
+        <Route path="/" element={<Navigate to="/ejercicio/privado" replace />} />
+        <Route path="/ejercicio/:scope" element={<ClientsList />} />
+        <Route
+          path="/ejercicio/:scope/clientes/:clientId"
+          element={<ClientView />}
+        />
+        <Route
+          path="/ejercicio/:scope/clientes/:clientId/carpetas/:folderId"
+          element={<SubfolderView />}
+        />
+        <Route
+          path="/ejercicio/:scope/clientes/:clientId/propuestas/:proposalId"
+          element={<ProposalView />}
+        />
+        <Route path="/perfil" element={<Profile />} />
+        <Route path="/manual" element={<Manual />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -1,0 +1,583 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import Modal from './Modal'
+import {
+  Client,
+  DocumentRow,
+  GeneratedAttachment,
+  Profile,
+  downloadDocumentAsBase64,
+  generateDocumentWithAI,
+  getProfile,
+  listFundamentalDocuments,
+  saveGeneratedDocumentAsFile,
+} from '../lib/api'
+import { OFFICE_ADDRESS } from '../lib/officeInfo'
+import { useAuth } from '../contexts/AuthContext'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  client: Client
+  onSaved?: () => void
+}
+
+type DocType = 'poder' | 'arrendamiento' | 'laboral' | 'acta_asamblea'
+
+const DOC_TYPES: { key: DocType; label: string }[] = [
+  { key: 'poder', label: 'Poder' },
+  { key: 'arrendamiento', label: 'Contrato de Arrendamiento' },
+  { key: 'laboral', label: 'Contrato Laboral' },
+  { key: 'acta_asamblea', label: 'Acta de Asamblea' },
+]
+
+const inputClass =
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
+
+export default function GenerateDocumentModal({
+  open,
+  onClose,
+  client,
+  onSaved,
+}: Props) {
+  const { user } = useAuth()
+
+  const [documentType, setDocumentType] = useState<DocType>('poder')
+  const [params, setParams] = useState<Record<string, string>>({})
+  const [additionalInstructions, setAdditionalInstructions] = useState('')
+  const [fundamentalDocs, setFundamentalDocs] = useState<DocumentRow[]>([])
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<string>('')
+  const [savingFile, setSavingFile] = useState(false)
+  const [info, setInfo] = useState<string | null>(null)
+
+  // Reset al abrir
+  useEffect(() => {
+    if (!open) return
+    setDocumentType('poder')
+    setParams({})
+    setAdditionalInstructions('')
+    setSelectedDocIds(new Set())
+    setResult('')
+    setError(null)
+    setInfo(null)
+  }, [open])
+
+  // Cargar documentos fundamentales al abrir
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    ;(async () => {
+      try {
+        setLoading(true)
+        const docs = await listFundamentalDocuments(client.id)
+        if (!alive) return
+        setFundamentalDocs(docs)
+        // Por defecto marcar todos
+        setSelectedDocIds(new Set(docs.map((d) => d.id)))
+      } catch (err) {
+        if (alive) setError((err as Error).message)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [open, client.id])
+
+  const setParam = (key: string, value: string) =>
+    setParams((p) => ({ ...p, [key]: value }))
+
+  const toggleDoc = (id: string) =>
+    setSelectedDocIds((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const selectedDocs = useMemo(
+    () => fundamentalDocs.filter((d) => selectedDocIds.has(d.id)),
+    [fundamentalDocs, selectedDocIds],
+  )
+
+  const handleGenerate = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    setError(null)
+    setInfo(null)
+    setResult('')
+    setGenerating(true)
+    try {
+      // Descargar y convertir los documentos seleccionados a base64
+      const attachments: GeneratedAttachment[] = []
+      for (const doc of selectedDocs) {
+        try {
+          const att = await downloadDocumentAsBase64(doc)
+          attachments.push(att)
+        } catch (err) {
+          throw new Error(
+            `No se pudo descargar "${doc.name}": ${(err as Error).message}`,
+          )
+        }
+      }
+
+      // Perfil del autor (para los datos del abogado)
+      const author: Profile | null = await getProfile(user.id).catch(() => null)
+
+      const text = await generateDocumentWithAI({
+        documentType,
+        params: {
+          ...params,
+          additionalInstructions: additionalInstructions || undefined,
+        },
+        client,
+        author,
+        officeAddress: OFFICE_ADDRESS,
+        attachments,
+      })
+      setResult(text)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(result)
+      setInfo('Texto copiado al portapapeles.')
+      setTimeout(() => setInfo(null), 2000)
+    } catch {
+      setError('No se pudo copiar al portapapeles.')
+    }
+  }
+
+  const handleDownload = () => {
+    const blob = new Blob([result], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${documentType}_${client.name.replace(/[^\w]+/g, '_')}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleSaveAsFile = async () => {
+    if (!user) return
+    try {
+      setSavingFile(true)
+      const label =
+        DOC_TYPES.find((d) => d.key === documentType)?.label ?? documentType
+      await saveGeneratedDocumentAsFile(
+        result,
+        `${label} - ${client.name}`,
+        client,
+        user.id,
+      )
+      setInfo('Guardado como archivo del cliente.')
+      onSaved?.()
+      setTimeout(() => setInfo(null), 2500)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSavingFile(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Generar documento">
+      <form onSubmit={handleGenerate} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Tipo de documento
+          </label>
+          <select
+            value={documentType}
+            onChange={(e) => {
+              setDocumentType(e.target.value as DocType)
+              setParams({})
+            }}
+            className={inputClass}
+          >
+            {DOC_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Campos específicos por tipo */}
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <legend className="px-2 text-sm font-semibold text-slate-700">
+            Parámetros del documento
+          </legend>
+          {documentType === 'poder' && <PoderFields params={params} setParam={setParam} />}
+          {documentType === 'arrendamiento' && (
+            <ArrendamientoFields params={params} setParam={setParam} />
+          )}
+          {documentType === 'laboral' && <LaboralFields params={params} setParam={setParam} />}
+          {documentType === 'acta_asamblea' && (
+            <ActaFields params={params} setParam={setParam} />
+          )}
+        </fieldset>
+
+        {/* Documentos fundamentales a incluir como contexto */}
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <legend className="px-2 text-sm font-semibold text-slate-700">
+            Documentos fundamentales del cliente
+          </legend>
+          <p className="mb-3 text-xs text-slate-500">
+            La IA leerá el contenido (o hará OCR en las imágenes) para usar los
+            datos exactos al redactar el documento.
+          </p>
+          {loading ? (
+            <p className="text-sm text-slate-500">Cargando…</p>
+          ) : fundamentalDocs.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500">
+              No has subido documentos fundamentales a este cliente. Ciérralo,
+              sube el Documento Constitutivo y/o las cédulas en la sección
+              "Documentos fundamentales" y vuelve a intentarlo.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {fundamentalDocs.map((doc) => (
+                <li key={doc.id} className="flex items-center gap-2 rounded bg-white p-2">
+                  <input
+                    type="checkbox"
+                    id={`fdoc-${doc.id}`}
+                    checked={selectedDocIds.has(doc.id)}
+                    onChange={() => toggleDoc(doc.id)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <label
+                    htmlFor={`fdoc-${doc.id}`}
+                    className="min-w-0 flex-1 truncate text-sm text-slate-700"
+                  >
+                    {doc.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </fieldset>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Instrucciones adicionales (opcional)
+          </label>
+          <textarea
+            rows={3}
+            value={additionalInstructions}
+            onChange={(e) => setAdditionalInstructions(e.target.value)}
+            className={inputClass}
+            placeholder="Ej: incluir cláusula de arbitraje, usar denominación social específica…"
+          />
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {info && <p className="text-sm text-green-600">{info}</p>}
+
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Cerrar
+          </button>
+          <button
+            type="submit"
+            disabled={generating}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {generating ? 'Generando con IA…' : 'Generar documento'}
+          </button>
+        </div>
+      </form>
+
+      {/* Resultado */}
+      {result && (
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <h4 className="mb-2 text-sm font-semibold text-slate-700">
+            Documento generado (editable)
+          </h4>
+          <textarea
+            value={result}
+            onChange={(e) => setResult(e.target.value)}
+            rows={16}
+            className="w-full rounded-lg border border-slate-300 p-3 font-mono text-xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            >
+              Copiar
+            </button>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            >
+              Descargar .txt
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAsFile}
+              disabled={savingFile}
+              className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {savingFile ? 'Guardando…' : 'Guardar como archivo del cliente'}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// =========================================================
+// Campos específicos por tipo de documento
+// =========================================================
+
+interface FieldProps {
+  params: Record<string, string>
+  setParam: (key: string, value: string) => void
+}
+
+function Field({
+  label,
+  name,
+  params,
+  setParam,
+  type = 'text',
+  placeholder,
+}: FieldProps & {
+  label: string
+  name: string
+  type?: string
+  placeholder?: string
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-700">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={params[name] ?? ''}
+        onChange={(e) => setParam(name, e.target.value)}
+        className={inputClass}
+        placeholder={placeholder}
+      />
+    </div>
+  )
+}
+
+function TextArea({
+  label,
+  name,
+  params,
+  setParam,
+  placeholder,
+  rows = 2,
+}: FieldProps & { label: string; name: string; placeholder?: string; rows?: number }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-700">
+        {label}
+      </label>
+      <textarea
+        value={params[name] ?? ''}
+        onChange={(e) => setParam(name, e.target.value)}
+        className={inputClass}
+        rows={rows}
+        placeholder={placeholder}
+      />
+    </div>
+  )
+}
+
+function Select({
+  label,
+  name,
+  params,
+  setParam,
+  options,
+}: FieldProps & {
+  label: string
+  name: string
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-700">
+        {label}
+      </label>
+      <select
+        value={params[name] ?? options[0]?.value ?? ''}
+        onChange={(e) => setParam(name, e.target.value)}
+        className={inputClass}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function PoderFields(props: FieldProps) {
+  return (
+    <div className="space-y-3">
+      <Select
+        {...props}
+        label="Tipo de poder"
+        name="powerType"
+        options={[
+          { value: 'general', label: 'General' },
+          { value: 'especial', label: 'Especial' },
+        ]}
+      />
+      <Field {...props} label="Nombre del apoderado" name="granteeName" />
+      <Field {...props} label="Cédula del apoderado" name="granteeCedula" />
+      <TextArea
+        {...props}
+        label="Facultades (si es especial)"
+        name="powers"
+        placeholder="Ej: Representar en juicio, cobrar sumas, firmar documentos…"
+        rows={3}
+      />
+    </div>
+  )
+}
+
+function ArrendamientoFields(props: FieldProps) {
+  return (
+    <div className="space-y-3">
+      <Select
+        {...props}
+        label="Rol del cliente"
+        name="clientRole"
+        options={[
+          { value: 'arrendador', label: 'Arrendador' },
+          { value: 'arrendatario', label: 'Arrendatario' },
+        ]}
+      />
+      <Field {...props} label="Nombre de la contraparte" name="counterpartyName" />
+      <Field {...props} label="Cédula/RIF de la contraparte" name="counterpartyCedula" />
+      <TextArea
+        {...props}
+        label="Descripción del inmueble"
+        name="propertyDescription"
+        placeholder="Dirección, linderos, superficie, características…"
+        rows={3}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <Field {...props} label="Duración" name="duration" placeholder="Ej: 1 año" />
+        <Field
+          {...props}
+          label="Canon mensual"
+          name="monthlyRent"
+          type="number"
+        />
+      </div>
+      <Field {...props} label="Moneda" name="currency" placeholder="USD" />
+      <TextArea
+        {...props}
+        label="Condiciones adicionales (opcional)"
+        name="conditions"
+        rows={2}
+      />
+    </div>
+  )
+}
+
+function LaboralFields(props: FieldProps) {
+  return (
+    <div className="space-y-3">
+      <Select
+        {...props}
+        label="Rol del cliente"
+        name="clientRole"
+        options={[
+          { value: 'patrono', label: 'Patrono' },
+          { value: 'trabajador', label: 'Trabajador' },
+        ]}
+      />
+      <Field {...props} label="Nombre del trabajador" name="workerName" />
+      <Field {...props} label="Cédula del trabajador" name="workerCedula" />
+      <Field {...props} label="Cargo" name="position" />
+      <div className="grid grid-cols-2 gap-2">
+        <Field {...props} label="Salario" name="salary" type="number" />
+        <Field {...props} label="Moneda" name="currency" placeholder="USD" />
+      </div>
+      <Select
+        {...props}
+        label="Tipo de contrato"
+        name="contractType"
+        options={[
+          { value: 'tiempo indeterminado', label: 'Tiempo indeterminado' },
+          { value: 'tiempo determinado', label: 'Tiempo determinado' },
+          { value: 'por obra', label: 'Por obra determinada' },
+        ]}
+      />
+      <Field {...props} label="Fecha de inicio" name="startDate" type="date" />
+      <Field
+        {...props}
+        label="Jornada (opcional)"
+        name="workingHours"
+        placeholder="Ej: Lunes a viernes, 8 a.m. a 5 p.m."
+      />
+    </div>
+  )
+}
+
+function ActaFields(props: FieldProps) {
+  return (
+    <div className="space-y-3">
+      <Select
+        {...props}
+        label="Tipo de asamblea"
+        name="meetingType"
+        options={[
+          { value: 'ordinaria', label: 'Ordinaria' },
+          { value: 'extraordinaria', label: 'Extraordinaria' },
+        ]}
+      />
+      <Field {...props} label="Fecha de la asamblea" name="meetingDate" type="date" />
+      <TextArea
+        {...props}
+        label="Orden del día"
+        name="agenda"
+        placeholder="1. Aprobación de balances&#10;2. Nombramiento de junta directiva"
+        rows={3}
+      />
+      <TextArea
+        {...props}
+        label="Decisiones adoptadas"
+        name="resolutions"
+        placeholder="Resumen de cada punto aprobado por la asamblea"
+        rows={4}
+      />
+      <TextArea
+        {...props}
+        label="Asistentes (opcional)"
+        name="attendees"
+        placeholder="Si se deja en blanco, la IA los extraerá del documento constitutivo"
+        rows={2}
+      />
+    </div>
+  )
+}
