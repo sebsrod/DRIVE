@@ -26,6 +26,17 @@ interface Attachment {
   base64: string
 }
 
+interface Shareholder {
+  name: string
+  cedula: string
+  percentage: number
+}
+
+interface LegalRepresentative {
+  name: string
+  cedula: string
+}
+
 interface RequestBody {
   documentType:
     | 'poder'
@@ -39,6 +50,14 @@ interface RequestBody {
     cedula_rif: string | null
     phone: string | null
     address: string | null
+    client_type?: 'natural' | 'juridica'
+    capital_social?: string | null
+    registry_office?: string | null
+    registry_date?: string | null
+    registry_number?: string | null
+    registry_volume?: string | null
+    shareholders?: Shareholder[]
+    legal_representatives?: LegalRepresentative[]
   }
   author: {
     full_name: string | null
@@ -204,14 +223,65 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
 function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): string {
   const { client, author, officeAddress, params, documentType } = body
 
+  const isJuridica = client.client_type === 'juridica'
   const clientLines = [
-    `Nombre: ${client.name}`,
-    client.cedula_rif ? `Cédula/RIF: ${client.cedula_rif}` : null,
-    client.address ? `Dirección: ${client.address}` : null,
+    `Tipo: ${isJuridica ? 'Persona jurídica (sociedad mercantil)' : 'Persona natural'}`,
+    `${isJuridica ? 'Razón social' : 'Nombre'}: ${client.name}`,
+    client.cedula_rif
+      ? `${isJuridica ? 'RIF' : 'Cédula'}: ${client.cedula_rif}`
+      : null,
+    client.address ? `Domicilio: ${client.address}` : null,
     client.phone ? `Teléfono: ${client.phone}` : null,
   ]
     .filter(Boolean)
     .join('\n')
+
+  // Si el cliente es persona jurídica, añadir sección con los datos
+  // estructurados de la empresa para que la IA los use textualmente.
+  let companySection = ''
+  if (isJuridica) {
+    const regLines = [
+      client.registry_office
+        ? `Registro Mercantil: ${client.registry_office}`
+        : null,
+      client.registry_date ? `Fecha de registro: ${client.registry_date}` : null,
+      client.registry_number || client.registry_volume
+        ? `Número / Tomo: ${client.registry_number ?? ''}${
+            client.registry_volume ? ` / Tomo ${client.registry_volume}` : ''
+          }`
+        : null,
+      client.capital_social ? `Capital social: ${client.capital_social}` : null,
+    ].filter(Boolean)
+
+    const shareholders = client.shareholders ?? []
+    const reps = client.legal_representatives ?? []
+
+    const shareholdersLines = shareholders.length
+      ? [
+          'Accionistas:',
+          ...shareholders.map(
+            (s) =>
+              `  - ${s.name}${s.cedula ? ` (C.I./RIF ${s.cedula})` : ''} — ${s.percentage}%`,
+          ),
+        ]
+      : []
+
+    const repsLines = reps.length
+      ? [
+          'Representantes legales:',
+          ...reps.map(
+            (r) => `  - ${r.name}${r.cedula ? ` (C.I. ${r.cedula})` : ''}`,
+          ),
+        ]
+      : []
+
+    const blocks = [regLines.join('\n'), shareholdersLines.join('\n'), repsLines.join('\n')]
+      .filter((b) => b.trim().length > 0)
+
+    if (blocks.length > 0) {
+      companySection = ['', '=== DATOS DE LA EMPRESA ===', ...blocks].join('\n')
+    }
+  }
 
   const authorLines = [
     author.full_name ? `Abogado: ${author.full_name}` : null,
@@ -248,6 +318,7 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
     '',
     '=== DATOS DEL CLIENTE ===',
     clientLines,
+    companySection,
     '',
     '=== DATOS DEL ABOGADO ===',
     authorLines,

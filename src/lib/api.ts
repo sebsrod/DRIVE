@@ -2,6 +2,19 @@ import { supabase, PERSONAL_BUCKET, SHARED_BUCKET } from './supabase'
 
 export type Scope = 'private' | 'team'
 
+export type ClientType = 'natural' | 'juridica'
+
+export interface Shareholder {
+  name: string
+  cedula: string
+  percentage: number
+}
+
+export interface LegalRepresentative {
+  name: string
+  cedula: string
+}
+
 export interface Profile {
   id: string
   email: string
@@ -20,6 +33,14 @@ export interface Client {
   address: string | null
   scope: Scope
   owner_id: string
+  client_type: ClientType
+  capital_social: string | null
+  registry_office: string | null
+  registry_date: string | null
+  registry_number: string | null
+  registry_volume: string | null
+  shareholders: Shareholder[]
+  legal_representatives: LegalRepresentative[]
   created_at: string
 }
 
@@ -130,10 +151,18 @@ export async function createClient(
   scope: Scope,
   ownerId: string,
   values: {
+    client_type: ClientType
     name: string
     cedula_rif?: string | null
     phone?: string | null
     address?: string | null
+    capital_social?: string | null
+    registry_office?: string | null
+    registry_date?: string | null
+    registry_number?: string | null
+    registry_volume?: string | null
+    shareholders?: Shareholder[]
+    legal_representatives?: LegalRepresentative[]
   },
 ): Promise<Client> {
   const { data, error } = await supabase
@@ -141,10 +170,18 @@ export async function createClient(
     .insert({
       scope,
       owner_id: ownerId,
+      client_type: values.client_type,
       name: values.name,
       cedula_rif: values.cedula_rif || null,
       phone: values.phone || null,
       address: values.address || null,
+      capital_social: values.capital_social || null,
+      registry_office: values.registry_office || null,
+      registry_date: values.registry_date || null,
+      registry_number: values.registry_number || null,
+      registry_volume: values.registry_volume || null,
+      shareholders: values.shareholders ?? [],
+      legal_representatives: values.legal_representatives ?? [],
     })
     .select()
     .single()
@@ -385,6 +422,14 @@ export async function generateDocumentWithAI(
         cedula_rif: input.client.cedula_rif,
         phone: input.client.phone,
         address: input.client.address,
+        client_type: input.client.client_type,
+        capital_social: input.client.capital_social,
+        registry_office: input.client.registry_office,
+        registry_date: input.client.registry_date,
+        registry_number: input.client.registry_number,
+        registry_volume: input.client.registry_volume,
+        shareholders: input.client.shareholders,
+        legal_representatives: input.client.legal_representatives,
       },
       author: {
         full_name: input.author?.full_name ?? null,

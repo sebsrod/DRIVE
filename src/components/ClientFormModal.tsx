@@ -1,11 +1,31 @@
 import { FormEvent, useEffect, useState } from 'react'
 import Modal from './Modal'
+import { ClientType, LegalRepresentative, Shareholder } from '../lib/api'
+
+interface ShareholderRow {
+  name: string
+  cedula: string
+  percentage: string
+}
+
+interface RepresentativeRow {
+  name: string
+  cedula: string
+}
 
 export interface ClientFormValues {
+  client_type: ClientType
   name: string
   cedula_rif: string
   phone: string
   address: string
+  capital_social: string
+  registry_office: string
+  registry_date: string
+  registry_number: string
+  registry_volume: string
+  shareholders: Shareholder[]
+  legal_representatives: LegalRepresentative[]
 }
 
 interface Props {
@@ -14,41 +34,131 @@ interface Props {
   onSubmit: (values: ClientFormValues) => Promise<void>
 }
 
-const empty: ClientFormValues = {
+const emptyShareholder: ShareholderRow = {
   name: '',
-  cedula_rif: '',
-  phone: '',
-  address: '',
+  cedula: '',
+  percentage: '',
 }
+const emptyRep: RepresentativeRow = { name: '', cedula: '' }
+
+const inputClass =
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
+
+const smallInputClass =
+  'w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
 
 export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
-  const [values, setValues] = useState<ClientFormValues>(empty)
+  const [clientType, setClientType] = useState<ClientType>('natural')
+  const [name, setName] = useState('')
+  const [cedulaRif, setCedulaRif] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [capitalSocial, setCapitalSocial] = useState('')
+  const [registryOffice, setRegistryOffice] = useState('')
+  const [registryDate, setRegistryDate] = useState('')
+  const [registryNumber, setRegistryNumber] = useState('')
+  const [registryVolume, setRegistryVolume] = useState('')
+  const [shareholders, setShareholders] = useState<ShareholderRow[]>([
+    { ...emptyShareholder },
+  ])
+  const [representatives, setRepresentatives] = useState<RepresentativeRow[]>([
+    { ...emptyRep },
+  ])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) {
-      setValues(empty)
-      setError(null)
-    }
+    if (!open) return
+    setClientType('natural')
+    setName('')
+    setCedulaRif('')
+    setPhone('')
+    setAddress('')
+    setCapitalSocial('')
+    setRegistryOffice('')
+    setRegistryDate('')
+    setRegistryNumber('')
+    setRegistryVolume('')
+    setShareholders([{ ...emptyShareholder }])
+    setRepresentatives([{ ...emptyRep }])
+    setError(null)
   }, [open])
 
-  const handleChange = (field: keyof ClientFormValues) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    setValues((v) => ({ ...v, [field]: e.target.value }))
-  }
+  const updateShareholder = (
+    i: number,
+    patch: Partial<ShareholderRow>,
+  ) =>
+    setShareholders((rows) =>
+      rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+    )
+
+  const updateRep = (i: number, patch: Partial<RepresentativeRow>) =>
+    setRepresentatives((rows) =>
+      rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+    )
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!values.name.trim()) {
+    if (!name.trim()) {
       setError('El nombre es obligatorio.')
       return
     }
+    if (clientType === 'juridica' && !cedulaRif.trim()) {
+      setError('Para personas jurídicas el RIF es obligatorio.')
+      return
+    }
+
+    const cleanedShareholders: Shareholder[] = []
+    const cleanedReps: LegalRepresentative[] = []
+    if (clientType === 'juridica') {
+      for (const s of shareholders) {
+        const n = s.name.trim()
+        if (!n && !s.cedula.trim() && !s.percentage.trim()) continue
+        const pct = parseFloat(s.percentage)
+        if (isNaN(pct) || pct < 0 || pct > 100) {
+          setError(
+            `Indica un porcentaje válido (0–100) para el accionista "${n || '(sin nombre)'}".`,
+          )
+          return
+        }
+        if (!n) {
+          setError('Cada accionista debe tener nombre.')
+          return
+        }
+        cleanedShareholders.push({
+          name: n,
+          cedula: s.cedula.trim(),
+          percentage: pct,
+        })
+      }
+      for (const r of representatives) {
+        const n = r.name.trim()
+        if (!n && !r.cedula.trim()) continue
+        if (!n) {
+          setError('Cada representante debe tener nombre.')
+          return
+        }
+        cleanedReps.push({ name: n, cedula: r.cedula.trim() })
+      }
+    }
+
     try {
       setSubmitting(true)
       setError(null)
-      await onSubmit({ ...values, name: values.name.trim() })
+      await onSubmit({
+        client_type: clientType,
+        name: name.trim(),
+        cedula_rif: cedulaRif.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        capital_social: clientType === 'juridica' ? capitalSocial.trim() : '',
+        registry_office: clientType === 'juridica' ? registryOffice.trim() : '',
+        registry_date: clientType === 'juridica' ? registryDate : '',
+        registry_number: clientType === 'juridica' ? registryNumber.trim() : '',
+        registry_volume: clientType === 'juridica' ? registryVolume.trim() : '',
+        shareholders: cleanedShareholders,
+        legal_representatives: cleanedReps,
+      })
       onClose()
     } catch (err) {
       setError((err as Error).message)
@@ -57,34 +167,82 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
     }
   }
 
-  const inputClass =
-    'w-full rounded-lg border border-slate-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
+  const isJuridica = clientType === 'juridica'
+  const cedulaLabel = isJuridica ? 'RIF' : 'Cédula de identidad'
+  const nameLabel = isJuridica ? 'Razón social' : 'Nombre completo'
 
   return (
     <Modal open={open} onClose={onClose} title="Agregar cliente">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Tipo de cliente */}
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            Tipo de cliente
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label
+              className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                !isJuridica
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-300 text-slate-700'
+              }`}
+            >
+              <input
+                type="radio"
+                name="client-type"
+                value="natural"
+                checked={!isJuridica}
+                onChange={() => setClientType('natural')}
+                className="h-4 w-4"
+              />
+              Persona natural
+            </label>
+            <label
+              className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                isJuridica
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-300 text-slate-700'
+              }`}
+            >
+              <input
+                type="radio"
+                name="client-type"
+                value="juridica"
+                checked={isJuridica}
+                onChange={() => setClientType('juridica')}
+                className="h-4 w-4"
+              />
+              Persona jurídica
+            </label>
+          </div>
+        </div>
+
+        {/* Datos comunes */}
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Nombre <span className="text-red-500">*</span>
+            {nameLabel} <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
             required
-            value={values.name}
-            onChange={handleChange('name')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             className={inputClass}
             autoFocus
           />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Cédula o RIF
+            {cedulaLabel}
+            {isJuridica && <span className="text-red-500"> *</span>}
           </label>
           <input
             type="text"
-            value={values.cedula_rif}
-            onChange={handleChange('cedula_rif')}
+            required={isJuridica}
+            value={cedulaRif}
+            onChange={(e) => setCedulaRif(e.target.value)}
             className={inputClass}
+            placeholder={isJuridica ? 'J-12345678-9' : 'V-12345678'}
           />
         </div>
         <div>
@@ -93,8 +251,8 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
           </label>
           <input
             type="tel"
-            value={values.phone}
-            onChange={handleChange('phone')}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             className={inputClass}
           />
         </div>
@@ -104,11 +262,232 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
           </label>
           <textarea
             rows={2}
-            value={values.address}
-            onChange={handleChange('address')}
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
             className={inputClass}
           />
         </div>
+
+        {/* Campos extra para jurídica */}
+        {isJuridica && (
+          <>
+            <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <legend className="px-2 text-sm font-semibold text-slate-700">
+                Datos de registro
+              </legend>
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Registro Mercantil
+                  </label>
+                  <input
+                    type="text"
+                    value={registryOffice}
+                    onChange={(e) => setRegistryOffice(e.target.value)}
+                    className={inputClass}
+                    placeholder="Ej: Registro Mercantil Primero del Distrito Capital"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Fecha
+                    </label>
+                    <input
+                      type="date"
+                      value={registryDate}
+                      onChange={(e) => setRegistryDate(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Número
+                    </label>
+                    <input
+                      type="text"
+                      value={registryNumber}
+                      onChange={(e) => setRegistryNumber(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Tomo
+                    </label>
+                    <input
+                      type="text"
+                      value={registryVolume}
+                      onChange={(e) => setRegistryVolume(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Capital social
+                  </label>
+                  <input
+                    type="text"
+                    value={capitalSocial}
+                    onChange={(e) => setCapitalSocial(e.target.value)}
+                    className={inputClass}
+                    placeholder="Ej: USD 50.000 / Bs. 1.000.000"
+                  />
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <legend className="px-2 text-sm font-semibold text-slate-700">
+                Accionistas
+              </legend>
+              <ul className="space-y-2">
+                {shareholders.map((s, i) => (
+                  <li
+                    key={i}
+                    className="grid grid-cols-12 items-start gap-2 rounded-lg bg-white p-2"
+                  >
+                    <div className="col-span-5">
+                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                        Nombre
+                      </label>
+                      <input
+                        type="text"
+                        value={s.name}
+                        onChange={(e) =>
+                          updateShareholder(i, { name: e.target.value })
+                        }
+                        className={smallInputClass}
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                        Cédula
+                      </label>
+                      <input
+                        type="text"
+                        value={s.cedula}
+                        onChange={(e) =>
+                          updateShareholder(i, { cedula: e.target.value })
+                        }
+                        className={smallInputClass}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                        %
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={s.percentage}
+                        onChange={(e) =>
+                          updateShareholder(i, { percentage: e.target.value })
+                        }
+                        className={`${smallInputClass} text-right`}
+                      />
+                    </div>
+                    <div className="col-span-1 flex items-end justify-end pb-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShareholders((rows) =>
+                            rows.length === 1
+                              ? [{ ...emptyShareholder }]
+                              : rows.filter((_, idx) => idx !== i),
+                          )
+                        }
+                        aria-label="Eliminar accionista"
+                        className="text-lg text-red-500 hover:text-red-700"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() =>
+                  setShareholders((rows) => [...rows, { ...emptyShareholder }])
+                }
+                className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+              >
+                + Agregar accionista
+              </button>
+            </fieldset>
+
+            <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <legend className="px-2 text-sm font-semibold text-slate-700">
+                Representantes legales
+              </legend>
+              <ul className="space-y-2">
+                {representatives.map((r, i) => (
+                  <li
+                    key={i}
+                    className="grid grid-cols-12 items-start gap-2 rounded-lg bg-white p-2"
+                  >
+                    <div className="col-span-7">
+                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                        Nombre
+                      </label>
+                      <input
+                        type="text"
+                        value={r.name}
+                        onChange={(e) =>
+                          updateRep(i, { name: e.target.value })
+                        }
+                        className={smallInputClass}
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                        Cédula
+                      </label>
+                      <input
+                        type="text"
+                        value={r.cedula}
+                        onChange={(e) =>
+                          updateRep(i, { cedula: e.target.value })
+                        }
+                        className={smallInputClass}
+                      />
+                    </div>
+                    <div className="col-span-1 flex items-end justify-end pb-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRepresentatives((rows) =>
+                            rows.length === 1
+                              ? [{ ...emptyRep }]
+                              : rows.filter((_, idx) => idx !== i),
+                          )
+                        }
+                        aria-label="Eliminar representante"
+                        className="text-lg text-red-500 hover:text-red-700"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() =>
+                  setRepresentatives((rows) => [...rows, { ...emptyRep }])
+                }
+                className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+              >
+                + Agregar representante
+              </button>
+            </fieldset>
+          </>
+        )}
+
         {error && <p className="text-sm text-red-600">{error}</p>}
         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
           <button
