@@ -48,7 +48,19 @@ export const SERVICES: ServiceDef[] = [
         key: 'nombramiento_junta_directiva',
         label: 'Nombramiento de Junta Directiva',
         description:
-          'Redacción y registro de Acta de Asamblea para la designación, ratificación o sustitución de los miembros de la Junta Directiva de la compañía. Comprende la elaboración del documento con los nombramientos acordados por los socios o accionistas, su inscripción ante el Registro Mercantil y la entrega del acta debidamente registrada.',
+          'Redacción y registro de Acta de Asamblea para la designación o sustitución de los miembros de la Junta Directiva de la compañía. Comprende la elaboración del documento con los nombramientos acordados por los socios o accionistas, su inscripción ante el Registro Mercantil y la entrega del acta debidamente registrada.',
+      },
+      {
+        key: 'ratificacion_junta_directiva',
+        label: 'Ratificación de Junta Directiva',
+        description:
+          'Redacción y registro de Acta de Asamblea para la ratificación de los miembros de la Junta Directiva de la compañía cuyo período ha vencido o requiere confirmación formal por los socios o accionistas, así como su inscripción ante el Registro Mercantil correspondiente.',
+      },
+      {
+        key: 'nombramiento_comisario',
+        label: 'Nombramiento de Comisario',
+        description:
+          'Redacción y registro de Acta de Asamblea para la designación del Comisario de la compañía, con indicación de su nombre, cédula, colegio profesional en el cual está inscrito y número de carnet. Incluye la inscripción del acta ante el Registro Mercantil correspondiente.',
       },
       {
         key: 'venta_acciones',

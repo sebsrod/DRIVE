@@ -107,6 +107,9 @@ export default function Layout() {
           <NavLink to="/ejercicio/equipo" className={linkClass}>
             Ejercicio en equipo
           </NavLink>
+          <NavLink to="/modelos" className={linkClass}>
+            Modelos
+          </NavLink>
           <NavLink to="/perfil" className={linkClass}>
             Perfil
           </NavLink>

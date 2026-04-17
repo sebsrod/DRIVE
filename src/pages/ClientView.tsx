@@ -290,11 +290,22 @@ export default function ClientView() {
                 client.legal_representatives.length > 0 && (
                   <div className="mt-4">
                     <h4 className="text-xs font-semibold uppercase text-slate-500">
-                      Representantes legales
+                      Junta Directiva / Representantes legales
                     </h4>
+                    {client.board_duration && (
+                      <p className="mt-1 text-xs text-slate-600">
+                        <span className="font-medium">Duración:</span>{' '}
+                        {client.board_duration}
+                      </p>
+                    )}
                     <ul className="mt-1 divide-y divide-slate-100 text-sm">
                       {client.legal_representatives.map((r, i) => (
                         <li key={i} className="py-1.5">
+                          {r.position && (
+                            <span className="mr-2 text-xs font-semibold uppercase text-indigo-700">
+                              {r.position}:
+                            </span>
+                          )}
                           <span className="font-medium text-slate-800">
                             {r.name}
                           </span>

@@ -10,6 +10,7 @@ import SubfolderView from './pages/SubfolderView'
 import Profile from './pages/Profile'
 import ProposalView from './pages/ProposalView'
 import Manual from './pages/Manual'
+import Models from './pages/Models'
 
 export default function App() {
   const { loading } = useAuth()
@@ -47,6 +48,7 @@ export default function App() {
           path="/ejercicio/:scope/clientes/:clientId/propuestas/:proposalId"
           element={<ProposalView />}
         />
+        <Route path="/modelos" element={<Models />} />
         <Route path="/perfil" element={<Profile />} />
         <Route path="/manual" element={<Manual />} />
       </Route>

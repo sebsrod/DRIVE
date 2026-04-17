@@ -11,6 +11,7 @@ interface ShareholderRow {
 interface RepresentativeRow {
   name: string
   cedula: string
+  position: string
 }
 
 export interface ClientFormValues {
@@ -24,6 +25,7 @@ export interface ClientFormValues {
   registry_date: string
   registry_number: string
   registry_volume: string
+  board_duration: string
   shareholders: Shareholder[]
   legal_representatives: LegalRepresentative[]
 }
@@ -39,7 +41,7 @@ const emptyShareholder: ShareholderRow = {
   cedula: '',
   percentage: '',
 }
-const emptyRep: RepresentativeRow = { name: '', cedula: '' }
+const emptyRep: RepresentativeRow = { name: '', cedula: '', position: '' }
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
@@ -58,6 +60,7 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
   const [registryDate, setRegistryDate] = useState('')
   const [registryNumber, setRegistryNumber] = useState('')
   const [registryVolume, setRegistryVolume] = useState('')
+  const [boardDuration, setBoardDuration] = useState('')
   const [shareholders, setShareholders] = useState<ShareholderRow[]>([
     { ...emptyShareholder },
   ])
@@ -79,6 +82,7 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
     setRegistryDate('')
     setRegistryNumber('')
     setRegistryVolume('')
+    setBoardDuration('')
     setShareholders([{ ...emptyShareholder }])
     setRepresentatives([{ ...emptyRep }])
     setError(null)
@@ -133,12 +137,16 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
       }
       for (const r of representatives) {
         const n = r.name.trim()
-        if (!n && !r.cedula.trim()) continue
+        if (!n && !r.cedula.trim() && !r.position.trim()) continue
         if (!n) {
           setError('Cada representante debe tener nombre.')
           return
         }
-        cleanedReps.push({ name: n, cedula: r.cedula.trim() })
+        cleanedReps.push({
+          name: n,
+          cedula: r.cedula.trim(),
+          position: r.position.trim(),
+        })
       }
     }
 
@@ -156,6 +164,7 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
         registry_date: clientType === 'juridica' ? registryDate : '',
         registry_number: clientType === 'juridica' ? registryNumber.trim() : '',
         registry_volume: clientType === 'juridica' ? registryVolume.trim() : '',
+        board_duration: clientType === 'juridica' ? boardDuration.trim() : '',
         shareholders: cleanedShareholders,
         legal_representatives: cleanedReps,
       })
@@ -422,55 +431,85 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
 
             <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <legend className="px-2 text-sm font-semibold text-slate-700">
-                Representantes legales
+                Junta Directiva / Representantes legales
               </legend>
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Duración del período de la Junta Directiva
+                </label>
+                <input
+                  type="text"
+                  value={boardDuration}
+                  onChange={(e) => setBoardDuration(e.target.value)}
+                  className={inputClass}
+                  placeholder="Ej: 5 años contados desde la inscripción en el Registro Mercantil"
+                />
+              </div>
               <ul className="space-y-2">
                 {representatives.map((r, i) => (
                   <li
                     key={i}
-                    className="grid grid-cols-12 items-start gap-2 rounded-lg bg-white p-2"
+                    className="space-y-2 rounded-lg bg-white p-2"
                   >
-                    <div className="col-span-7">
-                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
-                        Nombre
-                      </label>
-                      <input
-                        type="text"
-                        value={r.name}
-                        onChange={(e) =>
-                          updateRep(i, { name: e.target.value })
-                        }
-                        className={smallInputClass}
-                      />
+                    <div className="grid grid-cols-12 items-start gap-2">
+                      <div className="col-span-11">
+                        <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                          Cargo
+                        </label>
+                        <input
+                          type="text"
+                          value={r.position}
+                          onChange={(e) =>
+                            updateRep(i, { position: e.target.value })
+                          }
+                          className={smallInputClass}
+                          placeholder="Ej: Presidente, Vicepresidente, Director"
+                        />
+                      </div>
+                      <div className="col-span-1 flex items-end justify-end pb-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRepresentatives((rows) =>
+                              rows.length === 1
+                                ? [{ ...emptyRep }]
+                                : rows.filter((_, idx) => idx !== i),
+                            )
+                          }
+                          aria-label="Eliminar representante"
+                          className="text-lg text-red-500 hover:text-red-700"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
-                    <div className="col-span-4">
-                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
-                        Cédula
-                      </label>
-                      <input
-                        type="text"
-                        value={r.cedula}
-                        onChange={(e) =>
-                          updateRep(i, { cedula: e.target.value })
-                        }
-                        className={smallInputClass}
-                      />
-                    </div>
-                    <div className="col-span-1 flex items-end justify-end pb-1">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRepresentatives((rows) =>
-                            rows.length === 1
-                              ? [{ ...emptyRep }]
-                              : rows.filter((_, idx) => idx !== i),
-                          )
-                        }
-                        aria-label="Eliminar representante"
-                        className="text-lg text-red-500 hover:text-red-700"
-                      >
-                        ×
-                      </button>
+                    <div className="grid grid-cols-12 items-start gap-2">
+                      <div className="col-span-7">
+                        <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                          Nombre
+                        </label>
+                        <input
+                          type="text"
+                          value={r.name}
+                          onChange={(e) =>
+                            updateRep(i, { name: e.target.value })
+                          }
+                          className={smallInputClass}
+                        />
+                      </div>
+                      <div className="col-span-5">
+                        <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                          Cédula
+                        </label>
+                        <input
+                          type="text"
+                          value={r.cedula}
+                          onChange={(e) =>
+                            updateRep(i, { cedula: e.target.value })
+                          }
+                          className={smallInputClass}
+                        />
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -482,7 +521,7 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
                 }
                 className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
               >
-                + Agregar representante
+                + Agregar miembro
               </button>
             </fieldset>
           </>
