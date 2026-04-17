@@ -18,6 +18,10 @@ export default function Models() {
   const [models, setModels] = useState<ModelDocument[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number
+    total: number
+  } | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [stylePreview, setStylePreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -46,24 +50,50 @@ export default function Models() {
   }, [refresh])
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !user) return
-    if (models.length >= MAX_MODELS) {
+    const files = e.target.files
+    if (!files?.length || !user) return
+
+    const available = MAX_MODELS - models.length
+    if (available <= 0) {
       setError(
-        `Has alcanzado el máximo de ${MAX_MODELS} modelos. Elimina alguno antes de subir uno nuevo.`,
+        `Has alcanzado el máximo de ${MAX_MODELS} modelos. Elimina alguno antes de subir nuevos.`,
       )
       if (inputRef.current) inputRef.current.value = ''
       return
     }
+
+    const toUpload = Array.from(files).slice(0, available)
+    const skipped = files.length - toUpload.length
+
+    setUploading(true)
+    setError(null)
+    const failed: string[] = []
+
     try {
-      setUploading(true)
-      setError(null)
-      await uploadModelDocument(file, user.id)
+      for (let i = 0; i < toUpload.length; i++) {
+        const file = toUpload[i]
+        setUploadProgress({ current: i + 1, total: toUpload.length })
+        try {
+          await uploadModelDocument(file, user.id)
+        } catch (err) {
+          failed.push(`${file.name}: ${(err as Error).message}`)
+        }
+      }
       await refresh()
-    } catch (err) {
-      setError('Error al subir: ' + (err as Error).message)
+
+      const msgs: string[] = []
+      if (skipped > 0) {
+        msgs.push(
+          `${skipped} archivo(s) no se subieron porque superarían el máximo de ${MAX_MODELS}.`,
+        )
+      }
+      if (failed.length > 0) {
+        msgs.push(`Fallaron ${failed.length} archivo(s): ${failed.join('; ')}`)
+      }
+      if (msgs.length > 0) setError(msgs.join(' '))
     } finally {
       setUploading(false)
+      setUploadProgress(null)
       if (inputRef.current) inputRef.current.value = ''
     }
   }
@@ -125,6 +155,7 @@ export default function Models() {
               ref={inputRef}
               type="file"
               accept=".pdf"
+              multiple
               className="hidden"
               onChange={handleUpload}
             />
@@ -138,7 +169,11 @@ export default function Models() {
                   : undefined
               }
             >
-              {uploading ? 'Subiendo…' : '+ Subir modelo (PDF)'}
+              {uploading
+                ? uploadProgress
+                  ? `Subiendo ${uploadProgress.current} de ${uploadProgress.total}…`
+                  : 'Subiendo…'
+                : '+ Subir modelos (PDF)'}
             </button>
           </div>
         </div>
