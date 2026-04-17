@@ -135,6 +135,20 @@ export default function ManualContent() {
 
       <section>
         <h3 className="mb-2 text-base font-bold text-slate-900">
+          Modelos de estilo
+        </h3>
+        <p>
+          En la sección <strong>Modelos</strong> del menú lateral puedes subir
+          documentos que hayas redactado anteriormente (poderes, contratos,
+          actas). Al pulsar <strong>Analizar modelos</strong>, la IA extrae tu
+          estilo de redacción y lo guarda para reutilizarlo en todos los
+          documentos futuros. No necesitas repetir el análisis a menos que
+          cambies tus modelos.
+        </p>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-base font-bold text-slate-900">
           Imprimir o guardar como PDF
         </h3>
         <p>

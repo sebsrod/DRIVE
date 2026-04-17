@@ -21,7 +21,18 @@ export interface Profile {
   full_name: string | null
   phone: string | null
   ipsa_number: string | null
+  writing_style: string | null
   role: 'member' | 'admin'
+  created_at: string
+}
+
+export interface ModelDocument {
+  id: string
+  owner_id: string
+  name: string
+  storage_path: string
+  size: number | null
+  mime_type: string | null
   created_at: string
 }
 
@@ -397,6 +408,7 @@ export interface GenerateDocumentInput {
   author: Profile | null
   officeAddress: string
   attachments: GeneratedAttachment[]
+  writingStyle?: string | null
 }
 
 export async function generateDocumentWithAI(
@@ -439,6 +451,7 @@ export async function generateDocumentWithAI(
       },
       officeAddress: input.officeAddress,
       attachments: input.attachments,
+      writingStyle: input.writingStyle ?? null,
     }),
   })
   if (!res.ok) {
@@ -622,6 +635,107 @@ export function formatCurrency(amount: number, currency: string): string {
     maximumFractionDigits: 2,
   }).format(amount)
   return `${currency} ${formatted}`
+}
+
+// ---------- MODELOS DE ESTILO ----------
+
+export async function listModelDocuments(userId: string): Promise<ModelDocument[]> {
+  const { data, error } = await supabase
+    .from('model_documents')
+    .select('*')
+    .eq('owner_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as ModelDocument[]
+}
+
+export async function uploadModelDocument(
+  file: File,
+  userId: string,
+): Promise<ModelDocument> {
+  const path = `${userId}/_models/${Date.now()}-${sanitizeFilename(file.name)}`
+  const { error: uploadError } = await supabase.storage
+    .from(PERSONAL_BUCKET)
+    .upload(path, file, { upsert: false })
+  if (uploadError) throw uploadError
+
+  const { data, error } = await supabase
+    .from('model_documents')
+    .insert({
+      owner_id: userId,
+      name: file.name,
+      storage_path: path,
+      size: file.size,
+      mime_type: file.type,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as ModelDocument
+}
+
+export async function deleteModelDocument(doc: ModelDocument): Promise<void> {
+  const { error: storageError } = await supabase.storage
+    .from(PERSONAL_BUCKET)
+    .remove([doc.storage_path])
+  if (storageError) throw storageError
+  const { error } = await supabase
+    .from('model_documents')
+    .delete()
+    .eq('id', doc.id)
+  if (error) throw error
+}
+
+export async function downloadModelAsBase64(
+  doc: ModelDocument,
+): Promise<GeneratedAttachment> {
+  const { data, error } = await supabase.storage
+    .from(PERSONAL_BUCKET)
+    .download(doc.storage_path)
+  if (error) throw error
+  const base64 = await blobToBase64(data)
+  return {
+    filename: doc.name,
+    mimeType: doc.mime_type ?? 'application/pdf',
+    base64,
+  }
+}
+
+export async function analyzeStyleFromModels(
+  models: ModelDocument[],
+): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('No hay sesión activa.')
+
+  const attachments: GeneratedAttachment[] = []
+  for (const doc of models) {
+    const att = await downloadModelAsBase64(doc)
+    attachments.push(att)
+  }
+
+  const res = await fetch('/api/analyze-style', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ attachments }),
+  })
+  if (!res.ok) {
+    let err = `HTTP ${res.status}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) err = body.error
+    } catch {
+      // ignore
+    }
+    throw new Error(err)
+  }
+  const data = (await res.json()) as { style: string }
+  return data.style
 }
 
 export function formatSize(bytes: number | null): string {

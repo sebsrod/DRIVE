@@ -14,6 +14,24 @@ import {
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
 import { useAuth } from '../contexts/AuthContext'
 
+const COMMON_ASSEMBLY_ACTS = [
+  'Aprobación de balances y estados financieros',
+  'Distribución de dividendos / utilidades',
+  'Aumento de capital social',
+  'Disminución de capital social',
+  'Nombramiento / ratificación de Junta Directiva',
+  'Nombramiento de Comisario',
+  'Reforma parcial de estatutos',
+  'Venta / cesión de acciones',
+  'Cambio de domicilio social',
+  'Modificación del objeto social',
+  'Prórroga de duración de la compañía',
+  'Disolución y liquidación',
+  'Fusión',
+  'Transformación de tipo societario',
+  'Autorización para venta de activos',
+]
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -138,6 +156,7 @@ export default function GenerateDocumentModal({
         author,
         officeAddress: OFFICE_ADDRESS,
         attachments,
+        writingStyle: author?.writing_style ?? null,
       })
       setResult(text)
     } catch (err) {
@@ -544,11 +563,30 @@ function LaboralFields(props: FieldProps) {
   )
 }
 
-function ActaFields(props: FieldProps) {
+function ActaFields({ params, setParam }: FieldProps) {
+  const selectedActs: string[] = params.selectedActs
+    ? JSON.parse(params.selectedActs)
+    : []
+
+  const toggleAct = (act: string) => {
+    const next = selectedActs.includes(act)
+      ? selectedActs.filter((a) => a !== act)
+      : [...selectedActs, act]
+    setParam('selectedActs', JSON.stringify(next))
+    // Auto-generar el orden del día a partir de los actos seleccionados
+    if (next.length > 0) {
+      setParam(
+        'agenda',
+        next.map((a, i) => `${i + 1}. ${a}`).join('\n'),
+      )
+    }
+  }
+
   return (
     <div className="space-y-3">
       <Select
-        {...props}
+        params={params}
+        setParam={setParam}
         label="Tipo de asamblea"
         name="meetingType"
         options={[
@@ -556,26 +594,65 @@ function ActaFields(props: FieldProps) {
           { value: 'extraordinaria', label: 'Extraordinaria' },
         ]}
       />
-      <Field {...props} label="Fecha de la asamblea" name="meetingDate" type="date" />
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Fecha de la asamblea"
+        name="meetingDate"
+        type="date"
+      />
+
+      {/* Actos predeterminados */}
+      <div>
+        <label className="mb-2 block text-xs font-medium text-slate-700">
+          Actos a tratar (selecciona uno o varios)
+        </label>
+        <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
+          {COMMON_ASSEMBLY_ACTS.map((act) => {
+            const checked = selectedActs.includes(act)
+            return (
+              <li key={act} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`act-${act}`}
+                  checked={checked}
+                  onChange={() => toggleAct(act)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label
+                  htmlFor={`act-${act}`}
+                  className="text-xs text-slate-700"
+                >
+                  {act}
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+
       <TextArea
-        {...props}
+        params={params}
+        setParam={setParam}
         label="Orden del día"
         name="agenda"
-        placeholder="1. Aprobación de balances&#10;2. Nombramiento de junta directiva"
+        placeholder="Se llena automáticamente con los actos seleccionados. Puedes editarlo."
         rows={3}
       />
       <TextArea
-        {...props}
+        params={params}
+        setParam={setParam}
         label="Decisiones adoptadas"
         name="resolutions"
         placeholder="Resumen de cada punto aprobado por la asamblea"
         rows={4}
       />
       <TextArea
-        {...props}
+        params={params}
+        setParam={setParam}
         label="Asistentes (opcional)"
         name="attendees"
-        placeholder="Si se deja en blanco, la IA los extraerá del documento constitutivo"
+        placeholder="Si se deja en blanco, la IA los extraerá de los datos de la empresa"
         rows={2}
       />
     </div>

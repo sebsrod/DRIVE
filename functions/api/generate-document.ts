@@ -67,6 +67,7 @@ interface RequestBody {
   }
   officeAddress: string
   attachments: Attachment[]
+  writingStyle?: string | null
 }
 
 interface Context {
@@ -203,17 +204,25 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
         'Redacta un Contrato de Trabajo conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT) de Venezuela. Incluye identificación de las partes, cargo y funciones, salario, jornada, duración, beneficios legales, obligaciones, causales de terminación y firma. Usa cláusulas numeradas.',
       ].join('\n')
 
-    case 'acta_asamblea':
+    case 'acta_asamblea': {
+      const selectedActs = Array.isArray(p.selectedActs) ? p.selectedActs : []
+      const actsLine = selectedActs.length
+        ? `Actos predeterminados seleccionados: ${(selectedActs as string[]).join(', ')}`
+        : ''
       return [
         'Tipo de documento: ACTA DE ASAMBLEA',
         `Tipo de asamblea: ${s('meetingType') || 'ordinaria'}`,
         `Fecha de la asamblea: ${s('meetingDate')}`,
+        actsLine,
         `Orden del día: ${s('agenda')}`,
         `Decisiones adoptadas: ${s('resolutions')}`,
-        `Representación / asistentes: ${s('attendees') || '(extraer de los documentos fundamentales)'}`,
+        `Representación / asistentes: ${s('attendees') || '(extraer de los datos de la empresa o documentos fundamentales)'}`,
         '',
         'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Incluye encabezado con identificación de la sociedad, convocatoria, quórum, desarrollo de la asamblea con discusión del orden del día, decisiones adoptadas, cierre y firma de los asistentes. Usa un estilo formal notarial.',
-      ].join('\n')
+      ]
+        .filter((l) => l.length > 0)
+        .join('\n')
+    }
 
     default:
       return `Tipo de documento: ${type}\n(Sin parámetros específicos)`
@@ -309,6 +318,17 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
       ? `\n\nInstrucciones adicionales del usuario:\n${String(params.additionalInstructions).trim()}`
       : ''
 
+  // Guía de estilo del usuario (persistida en BD)
+  const styleSection = body.writingStyle?.trim()
+    ? [
+        '',
+        '=== GUÍA DE ESTILO DEL ABOGADO ===',
+        body.writingStyle.trim(),
+        '=== FIN DE LA GUÍA DE ESTILO ===',
+        'IMPORTANTE: Adapta el documento al estilo descrito arriba, respetando las fórmulas, estructura y convenciones del abogado autor.',
+      ].join('\n')
+    : ''
+
   return [
     'Eres un abogado venezolano experto en redacción de documentos legales.',
     'Debes redactar un documento completo, formal, listo para imprimir, con estructura tradicional venezolana (encabezado, identificación de las partes, exposición, cláusulas numeradas, cierre, fecha y firma).',
@@ -316,15 +336,16 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
     '',
     typeInstructions(documentType, params),
     '',
-    '=== DATOS DEL CLIENTE ===',
+    '=== DATOS DEL CLIENTE (FUENTE PRIMARIA) ===',
     clientLines,
     companySection,
     '',
     '=== DATOS DEL ABOGADO ===',
     authorLines,
+    styleSection,
     ocrSection,
     '',
-    'Toma en cuenta los documentos anexos (PDFs del cliente como el documento constitutivo y el texto OCR de las imágenes anexas) para obtener los nombres, cédulas, números de registro, domicilios y cualquier otro dato exacto que debas incluir.',
+    'PRIORIDAD DE DATOS: Los datos estructurados del cliente (sección DATOS DEL CLIENTE y DATOS DE LA EMPRESA) son la fuente primaria y autoritativa. Úsalos textualmente. Solo recurre a los documentos anexos (PDFs y texto OCR) para completar información que NO esté en los datos estructurados.',
     extra,
   ].join('\n')
 }
