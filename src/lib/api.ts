@@ -657,7 +657,10 @@ export async function uploadModelDocument(
   file: File,
   userId: string,
 ): Promise<ModelDocument> {
-  const path = `${userId}/_models/${Date.now()}-${sanitizeFilename(file.name)}`
+  // Un sufijo aleatorio evita colisiones cuando se suben varios
+  // archivos en el mismo milisegundo (Date.now() puede repetir valor).
+  const rand = Math.random().toString(36).slice(2, 10)
+  const path = `${userId}/_models/${Date.now()}-${rand}-${sanitizeFilename(file.name)}`
   const { error: uploadError } = await supabase.storage
     .from(PERSONAL_BUCKET)
     .upload(path, file, { upsert: false })
