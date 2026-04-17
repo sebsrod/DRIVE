@@ -52,6 +52,8 @@ export default function Models() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files?.length || !user) return
+    // eslint-disable-next-line no-console
+    console.log(`[Modelos] Seleccionados ${files.length} archivo(s)`)
 
     const available = MAX_MODELS - models.length
     if (available <= 0) {
@@ -76,7 +78,10 @@ export default function Models() {
         try {
           await uploadModelDocument(file, user.id)
         } catch (err) {
-          failed.push(`${file.name}: ${(err as Error).message}`)
+          const msg = (err as Error).message
+          // eslint-disable-next-line no-console
+          console.error(`[Modelos] Falló "${file.name}":`, err)
+          failed.push(`${file.name}: ${msg}`)
         }
       }
       await refresh()
