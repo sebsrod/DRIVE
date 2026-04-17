@@ -206,6 +206,90 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
         'Redacta un Contrato de Trabajo conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT) de Venezuela. Incluye identificación de las partes, cargo y funciones, salario, jornada, duración, beneficios legales, obligaciones, causales de terminación y firma. Usa cláusulas numeradas.',
       ].join('\n')
 
+    case 'documento_constitutivo': {
+      // Parsear accionistas y representantes que llegan como JSON string
+      let cShareholders: Array<{
+        name: string; cedula: string; civilStatus: string;
+        domicile: string; percentage: string
+      }> = []
+      if (typeof p.cShareholders === 'string') {
+        try { cShareholders = JSON.parse(p.cShareholders as string) } catch { /* */ }
+      } else if (Array.isArray(p.cShareholders)) {
+        cShareholders = p.cShareholders as typeof cShareholders
+      }
+      cShareholders = cShareholders.filter((sh) => sh?.name?.trim())
+
+      let cReps: Array<{ name: string; cedula: string; position: string }> = []
+      if (typeof p.cReps === 'string') {
+        try { cReps = JSON.parse(p.cReps as string) } catch { /* */ }
+      } else if (Array.isArray(p.cReps)) {
+        cReps = p.cReps as typeof cReps
+      }
+      cReps = cReps.filter((r) => r?.name?.trim())
+
+      const cLines: string[] = [
+        'Tipo de documento: DOCUMENTO CONSTITUTIVO DE COMPAÑÍA',
+        `Denominación social: ${s('companyName')}`,
+        `Objeto social (descripción breve del usuario, la IA debe ampliar con detalle jurídico): ${s('businessPurpose')}`,
+        `Domicilio: ${s('companyDomicile')}`,
+        `Registro Mercantil de inscripción: ${s('targetRegistry')}`,
+        `Capital suscrito: ${s('capitalSuscrito')}`,
+        `Capital pagado: ${s('capitalPagado')}`,
+        `Duración: ${s('companyDuration') || '30 años'}`,
+        `Tipo de representación: ${s('representationType') || 'separada'}`,
+      ]
+
+      if (cShareholders.length) {
+        cLines.push('')
+        cLines.push('Accionistas fundadores:')
+        for (const sh of cShareholders) {
+          cLines.push(
+            `  - ${sh.name}, C.I. ${sh.cedula}, ${sh.civilStatus || 'N/D'}, domiciliado en ${sh.domicile || 'N/D'} — ${sh.percentage}%`,
+          )
+        }
+      }
+
+      if (cReps.length) {
+        cLines.push('')
+        cLines.push('Administración de la sociedad:')
+        for (const r of cReps) {
+          cLines.push(`  - ${r.position || 'Representante'}: ${r.name} (C.I. ${r.cedula})`)
+        }
+      }
+
+      if (s('comisarioName')) {
+        cLines.push('')
+        cLines.push('Comisario:')
+        cLines.push(`  - Nombre: ${s('comisarioName')}`)
+        if (s('comisarioCedula')) cLines.push(`  - Cédula: ${s('comisarioCedula')}`)
+        if (s('comisarioColegio')) cLines.push(`  - Colegio: ${s('comisarioColegio')}`)
+        if (s('comisarioCarnet')) cLines.push(`  - N° de carnet: ${s('comisarioCarnet')}`)
+      }
+
+      if (s('notaryPresenter')) {
+        cLines.push('')
+        cLines.push(
+          `Persona autorizada para presentar el documento ante el Registro Mercantil: ${s('notaryPresenter')}`,
+        )
+      }
+
+      cLines.push('')
+      cLines.push(
+        'Redacta un Documento Constitutivo y Estatutos Sociales completo conforme al Código de Comercio venezolano. ' +
+        'Incluye: encabezado, denominación, domicilio, objeto social (ampliado a partir de la descripción breve del usuario), ' +
+        'duración, capital social (suscrito y pagado), accionistas con sus datos completos, ' +
+        'cláusulas de administración y representación, ' +
+        'funciones de la Junta Directiva, atribuciones de cada cargo, ' +
+        'facultades según el tipo de representación indicado, ' +
+        'Comisario, cláusulas sobre Asambleas, ejercicio económico, ' +
+        'distribución de utilidades, disolución y liquidación, y disposiciones transitorias (primera Junta Directiva y Comisario). ' +
+        'Incluye al final la cláusula que autoriza al presentante para la inscripción ante el Registro Mercantil. ' +
+        'Usa cláusulas numeradas en español formal jurídico venezolano.',
+      )
+
+      return cLines.join('\n')
+    }
+
     case 'acta_asamblea': {
       // selectedActs puede llegar como arreglo (cuando el frontend lo pasa
       // así) o como string JSON (patrón actual en GenerateDocumentModal)
@@ -287,8 +371,15 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
         `Representación / asistentes: ${s('attendees') || '(extraer de los datos de la empresa o documentos fundamentales)'}`,
       )
       lines.push('')
+      if (s('notaryPresenter')) {
+        lines.push('')
+        lines.push(
+          `Persona que participa el acta (firma al inicio y se autoriza al final para presentar ante el Registro Mercantil): ${s('notaryPresenter')}`,
+        )
+      }
+
       lines.push(
-        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Incluye encabezado con identificación de la sociedad, convocatoria, quórum, desarrollo de la asamblea con discusión del orden del día, decisiones adoptadas, cierre y firma de los asistentes. Usa un estilo formal notarial.',
+        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Incluye encabezado con identificación de la sociedad, convocatoria, quórum, desarrollo de la asamblea con discusión del orden del día, decisiones adoptadas, cierre y firma de los asistentes. Al final incluye la cláusula de autorización al presentante para la inscripción ante el Registro Mercantil. Usa un estilo formal notarial.',
       )
       return lines.filter((l) => l.length > 0).join('\n')
     }

@@ -44,13 +44,19 @@ interface Props {
   onSaved?: () => void
 }
 
-type DocType = 'poder' | 'arrendamiento' | 'laboral' | 'acta_asamblea'
+type DocType =
+  | 'poder'
+  | 'arrendamiento'
+  | 'laboral'
+  | 'acta_asamblea'
+  | 'documento_constitutivo'
 
 const DOC_TYPES: { key: DocType; label: string }[] = [
   { key: 'poder', label: 'Poder' },
   { key: 'arrendamiento', label: 'Contrato de Arrendamiento' },
   { key: 'laboral', label: 'Contrato Laboral' },
   { key: 'acta_asamblea', label: 'Acta de Asamblea' },
+  { key: 'documento_constitutivo', label: 'Documento Constitutivo' },
 ]
 
 const inputClass =
@@ -250,6 +256,9 @@ export default function GenerateDocumentModal({
           {documentType === 'laboral' && <LaboralFields params={params} setParam={setParam} />}
           {documentType === 'acta_asamblea' && (
             <ActaFields params={params} setParam={setParam} />
+          )}
+          {documentType === 'documento_constitutivo' && (
+            <ConstitutivoFields params={params} setParam={setParam} />
           )}
         </fieldset>
 
@@ -817,6 +826,366 @@ function ActaFields({ params, setParam }: FieldProps) {
         name="attendees"
         placeholder="Si se deja en blanco, la IA los extraerá de los datos de la empresa"
         rows={2}
+      />
+
+      {/* Participación (persona que firma/presenta al Registro Mercantil) */}
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Persona que participa el acta (firma el documento)"
+        name="notaryPresenter"
+        placeholder="Nombre completo de quien firma y presenta al Registro Mercantil"
+      />
+    </div>
+  )
+}
+
+// =========================================================
+// DOCUMENTO CONSTITUTIVO
+// =========================================================
+
+interface ConstitShareholderRow {
+  name: string
+  cedula: string
+  civilStatus: string
+  domicile: string
+  percentage: string
+}
+
+interface ConstitRepRow {
+  name: string
+  cedula: string
+  position: string
+}
+
+const emptyConstitShareholder: ConstitShareholderRow = {
+  name: '',
+  cedula: '',
+  civilStatus: '',
+  domicile: '',
+  percentage: '',
+}
+const emptyConstitRep: ConstitRepRow = { name: '', cedula: '', position: '' }
+
+function ConstitutivoFields({ params, setParam }: FieldProps) {
+  const shareholders: ConstitShareholderRow[] = params.cShareholders
+    ? JSON.parse(params.cShareholders)
+    : [{ ...emptyConstitShareholder }]
+
+  const reps: ConstitRepRow[] = params.cReps
+    ? JSON.parse(params.cReps)
+    : [{ ...emptyConstitRep }]
+
+  const updateSh = (i: number, patch: Partial<ConstitShareholderRow>) => {
+    const next = shareholders.map((s, idx) => (idx === i ? { ...s, ...patch } : s))
+    setParam('cShareholders', JSON.stringify(next))
+  }
+  const addSh = () =>
+    setParam(
+      'cShareholders',
+      JSON.stringify([...shareholders, { ...emptyConstitShareholder }]),
+    )
+  const removeSh = (i: number) => {
+    const next =
+      shareholders.length === 1
+        ? [{ ...emptyConstitShareholder }]
+        : shareholders.filter((_, idx) => idx !== i)
+    setParam('cShareholders', JSON.stringify(next))
+  }
+
+  const updateRep = (i: number, patch: Partial<ConstitRepRow>) => {
+    const next = reps.map((r, idx) => (idx === i ? { ...r, ...patch } : r))
+    setParam('cReps', JSON.stringify(next))
+  }
+  const addRep = () =>
+    setParam('cReps', JSON.stringify([...reps, { ...emptyConstitRep }]))
+  const removeRep = (i: number) => {
+    const next =
+      reps.length === 1
+        ? [{ ...emptyConstitRep }]
+        : reps.filter((_, idx) => idx !== i)
+    setParam('cReps', JSON.stringify(next))
+  }
+
+  const smallInput =
+    'w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
+
+  return (
+    <div className="space-y-4">
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Denominación social de la compañía"
+        name="companyName"
+        placeholder="Ej: INVERSIONES EJEMPLO, C.A."
+      />
+
+      <TextArea
+        params={params}
+        setParam={setParam}
+        label="Objeto social (breve — la IA lo desarrollará)"
+        name="businessPurpose"
+        placeholder="Ej: compra, venta, importación y exportación de bienes y servicios"
+        rows={3}
+      />
+
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Domicilio de la empresa"
+        name="companyDomicile"
+        placeholder="Ej: Caracas, Municipio Chacao del Estado Miranda"
+      />
+
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Registro Mercantil de inscripción"
+        name="targetRegistry"
+        placeholder="Ej: Registro Mercantil Primero del Distrito Capital"
+      />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field
+          params={params}
+          setParam={setParam}
+          label="Capital suscrito"
+          name="capitalSuscrito"
+          placeholder="Ej: USD 50.000"
+        />
+        <Field
+          params={params}
+          setParam={setParam}
+          label="Capital pagado"
+          name="capitalPagado"
+          placeholder="Ej: USD 50.000"
+        />
+      </div>
+
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Duración de la compañía"
+        name="companyDuration"
+        placeholder="Ej: 30 años contados desde su inscripción"
+      />
+
+      {/* Accionistas */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Accionistas
+        </legend>
+        <ul className="space-y-3">
+          {shareholders.map((s, i) => (
+            <li key={i} className="space-y-2 rounded-lg bg-white p-2">
+              <div className="grid grid-cols-12 items-start gap-2">
+                <div className="col-span-6">
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Nombre completo
+                  </label>
+                  <input
+                    type="text"
+                    value={s.name}
+                    onChange={(e) => updateSh(i, { name: e.target.value })}
+                    className={smallInput}
+                  />
+                </div>
+                <div className="col-span-3">
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Cédula
+                  </label>
+                  <input
+                    type="text"
+                    value={s.cedula}
+                    onChange={(e) => updateSh(i, { cedula: e.target.value })}
+                    className={smallInput}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    %
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={s.percentage}
+                    onChange={(e) => updateSh(i, { percentage: e.target.value })}
+                    className={`${smallInput} text-right`}
+                  />
+                </div>
+                <div className="col-span-1 flex items-end justify-end pb-1">
+                  <button
+                    type="button"
+                    onClick={() => removeSh(i)}
+                    aria-label="Eliminar accionista"
+                    className="text-lg text-red-500 hover:text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Estado civil
+                  </label>
+                  <input
+                    type="text"
+                    value={s.civilStatus}
+                    onChange={(e) => updateSh(i, { civilStatus: e.target.value })}
+                    className={smallInput}
+                    placeholder="Ej: soltero, casado"
+                  />
+                </div>
+                <div>
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Domicilio
+                  </label>
+                  <input
+                    type="text"
+                    value={s.domicile}
+                    onChange={(e) => updateSh(i, { domicile: e.target.value })}
+                    className={smallInput}
+                    placeholder="Ej: Caracas"
+                  />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={addSh}
+          className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+        >
+          + Agregar accionista
+        </button>
+      </fieldset>
+
+      {/* Administración */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Administración de la sociedad
+        </legend>
+        <div className="mb-3">
+          <label className="mb-1 block text-xs font-medium text-slate-700">
+            Tipo de representación
+          </label>
+          <select
+            value={params.representationType ?? 'separada'}
+            onChange={(e) => setParam('representationType', e.target.value)}
+            className={inputClass}
+          >
+            <option value="separada">Separada (cada uno actúa individualmente)</option>
+            <option value="conjunta">Conjunta (deben actuar juntos)</option>
+          </select>
+        </div>
+        <ul className="space-y-2">
+          {reps.map((r, i) => (
+            <li key={i} className="space-y-2 rounded-lg bg-white p-2">
+              <div className="grid grid-cols-12 items-start gap-2">
+                <div className="col-span-11">
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Cargo
+                  </label>
+                  <input
+                    type="text"
+                    value={r.position}
+                    onChange={(e) => updateRep(i, { position: e.target.value })}
+                    className={smallInput}
+                    placeholder="Presidente, Vicepresidente, Director…"
+                  />
+                </div>
+                <div className="col-span-1 flex items-end justify-end pb-1">
+                  <button
+                    type="button"
+                    onClick={() => removeRep(i)}
+                    aria-label="Eliminar representante"
+                    className="text-lg text-red-500 hover:text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-12 items-start gap-2">
+                <div className="col-span-7">
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Nombre
+                  </label>
+                  <input
+                    type="text"
+                    value={r.name}
+                    onChange={(e) => updateRep(i, { name: e.target.value })}
+                    className={smallInput}
+                  />
+                </div>
+                <div className="col-span-5">
+                  <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                    Cédula
+                  </label>
+                  <input
+                    type="text"
+                    value={r.cedula}
+                    onChange={(e) => updateRep(i, { cedula: e.target.value })}
+                    className={smallInput}
+                  />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={addRep}
+          className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+        >
+          + Agregar representante
+        </button>
+      </fieldset>
+
+      {/* Comisario */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Comisario
+        </legend>
+        <div className="space-y-2">
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Nombre"
+            name="comisarioName"
+          />
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Cédula"
+            name="comisarioCedula"
+          />
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Colegio en el que está inscrito"
+            name="comisarioColegio"
+            placeholder="Ej: Colegio de Contadores Públicos del Distrito Capital"
+          />
+          <Field
+            params={params}
+            setParam={setParam}
+            label="N° de carnet"
+            name="comisarioCarnet"
+          />
+        </div>
+      </fieldset>
+
+      {/* Persona que presenta al Registro Mercantil */}
+      <Field
+        params={params}
+        setParam={setParam}
+        label="Persona autorizada para presentar al Registro Mercantil"
+        name="notaryPresenter"
+        placeholder="Nombre completo de quien firma y presenta ante el Registro"
       />
     </div>
   )
