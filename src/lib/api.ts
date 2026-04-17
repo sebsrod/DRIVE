@@ -13,6 +13,7 @@ export interface Shareholder {
 export interface LegalRepresentative {
   name: string
   cedula: string
+  position?: string
 }
 
 export interface Profile {
@@ -50,6 +51,7 @@ export interface Client {
   registry_date: string | null
   registry_number: string | null
   registry_volume: string | null
+  board_duration: string | null
   shareholders: Shareholder[]
   legal_representatives: LegalRepresentative[]
   created_at: string
@@ -172,6 +174,7 @@ export async function createClient(
     registry_date?: string | null
     registry_number?: string | null
     registry_volume?: string | null
+    board_duration?: string | null
     shareholders?: Shareholder[]
     legal_representatives?: LegalRepresentative[]
   },
@@ -191,6 +194,7 @@ export async function createClient(
       registry_date: values.registry_date || null,
       registry_number: values.registry_number || null,
       registry_volume: values.registry_volume || null,
+      board_duration: values.board_duration || null,
       shareholders: values.shareholders ?? [],
       legal_representatives: values.legal_representatives ?? [],
     })

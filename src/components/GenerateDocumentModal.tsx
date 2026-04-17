@@ -19,7 +19,8 @@ const COMMON_ASSEMBLY_ACTS = [
   'Distribución de dividendos / utilidades',
   'Aumento de capital social',
   'Disminución de capital social',
-  'Nombramiento / ratificación de Junta Directiva',
+  'Nombramiento de Junta Directiva',
+  'Ratificación de Junta Directiva',
   'Nombramiento de Comisario',
   'Reforma parcial de estatutos',
   'Venta / cesión de acciones',
@@ -31,6 +32,10 @@ const COMMON_ASSEMBLY_ACTS = [
   'Transformación de tipo societario',
   'Autorización para venta de activos',
 ]
+
+const ACT_NOMBRAMIENTO_JD = 'Nombramiento de Junta Directiva'
+const ACT_RATIFICACION_JD = 'Ratificación de Junta Directiva'
+const ACT_NOMBRAMIENTO_COMISARIO = 'Nombramiento de Comisario'
 
 interface Props {
   open: boolean
@@ -568,6 +573,15 @@ function ActaFields({ params, setParam }: FieldProps) {
     ? JSON.parse(params.selectedActs)
     : []
 
+  const jdMembers: Array<{ name: string; cedula: string; position: string }> =
+    params.jdMembers
+      ? JSON.parse(params.jdMembers)
+      : [{ name: '', cedula: '', position: '' }]
+
+  const nombramientoJD = selectedActs.includes(ACT_NOMBRAMIENTO_JD)
+  const ratificacionJD = selectedActs.includes(ACT_RATIFICACION_JD)
+  const nombramientoComisario = selectedActs.includes(ACT_NOMBRAMIENTO_COMISARIO)
+
   const toggleAct = (act: string) => {
     const next = selectedActs.includes(act)
       ? selectedActs.filter((a) => a !== act)
@@ -580,6 +594,27 @@ function ActaFields({ params, setParam }: FieldProps) {
         next.map((a, i) => `${i + 1}. ${a}`).join('\n'),
       )
     }
+  }
+
+  const updateJdMember = (
+    i: number,
+    patch: Partial<{ name: string; cedula: string; position: string }>,
+  ) => {
+    const next = jdMembers.map((m, idx) => (idx === i ? { ...m, ...patch } : m))
+    setParam('jdMembers', JSON.stringify(next))
+  }
+
+  const addJdMember = () => {
+    const next = [...jdMembers, { name: '', cedula: '', position: '' }]
+    setParam('jdMembers', JSON.stringify(next))
+  }
+
+  const removeJdMember = (i: number) => {
+    const next =
+      jdMembers.length === 1
+        ? [{ name: '', cedula: '', position: '' }]
+        : jdMembers.filter((_, idx) => idx !== i)
+    setParam('jdMembers', JSON.stringify(next))
   }
 
   return (
@@ -630,6 +665,134 @@ function ActaFields({ params, setParam }: FieldProps) {
           })}
         </ul>
       </div>
+
+      {/* Nuevos miembros de la Junta Directiva */}
+      {nombramientoJD && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Nuevos miembros de la Junta Directiva
+          </legend>
+          <ul className="space-y-2">
+            {jdMembers.map((m, i) => (
+              <li key={i} className="space-y-2 rounded-lg bg-white p-2">
+                <div className="grid grid-cols-12 items-start gap-2">
+                  <div className="col-span-11">
+                    <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                      Cargo
+                    </label>
+                    <input
+                      type="text"
+                      value={m.position}
+                      onChange={(e) =>
+                        updateJdMember(i, { position: e.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="Presidente, Vicepresidente, Director…"
+                    />
+                  </div>
+                  <div className="col-span-1 flex items-end justify-end pb-1">
+                    <button
+                      type="button"
+                      onClick={() => removeJdMember(i)}
+                      aria-label="Eliminar miembro"
+                      className="text-lg text-red-500 hover:text-red-700"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-12 items-start gap-2">
+                  <div className="col-span-7">
+                    <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                      Nombre
+                    </label>
+                    <input
+                      type="text"
+                      value={m.name}
+                      onChange={(e) => updateJdMember(i, { name: e.target.value })}
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="col-span-5">
+                    <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                      Cédula
+                    </label>
+                    <input
+                      type="text"
+                      value={m.cedula}
+                      onChange={(e) =>
+                        updateJdMember(i, { cedula: e.target.value })
+                      }
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={addJdMember}
+            className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+          >
+            + Agregar miembro
+          </button>
+          <div className="mt-2">
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Duración del nuevo período"
+              name="newBoardDuration"
+              placeholder="Ej: 5 años desde la inscripción en el Registro Mercantil"
+            />
+          </div>
+        </fieldset>
+      )}
+
+      {/* Ratificación de JD: usa los datos del cliente */}
+      {ratificacionJD && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
+          <strong>Ratificación:</strong> se utilizarán los mismos miembros,
+          cargos y duración registrados en los datos de la empresa. Si necesitas
+          cambiarlos, edita el cliente desde su tarjeta.
+        </div>
+      )}
+
+      {/* Comisario */}
+      {nombramientoComisario && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Datos del Comisario
+          </legend>
+          <div className="space-y-2">
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Nombre"
+              name="comisarioName"
+            />
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Cédula"
+              name="comisarioCedula"
+            />
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Colegio en el que está inscrito"
+              name="comisarioColegio"
+              placeholder="Ej: Colegio de Contadores Públicos del Estado Miranda"
+            />
+            <Field
+              params={params}
+              setParam={setParam}
+              label="N° de carnet"
+              name="comisarioCarnet"
+            />
+          </div>
+        </fieldset>
+      )}
 
       <TextArea
         params={params}

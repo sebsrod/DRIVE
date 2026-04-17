@@ -35,6 +35,7 @@ interface Shareholder {
 interface LegalRepresentative {
   name: string
   cedula: string
+  position?: string
 }
 
 interface RequestBody {
@@ -56,6 +57,7 @@ interface RequestBody {
     registry_date?: string | null
     registry_number?: string | null
     registry_volume?: string | null
+    board_duration?: string | null
     shareholders?: Shareholder[]
     legal_representatives?: LegalRepresentative[]
   }
@@ -205,23 +207,90 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       ].join('\n')
 
     case 'acta_asamblea': {
-      const selectedActs = Array.isArray(p.selectedActs) ? p.selectedActs : []
-      const actsLine = selectedActs.length
-        ? `Actos predeterminados seleccionados: ${(selectedActs as string[]).join(', ')}`
-        : ''
-      return [
+      // selectedActs puede llegar como arreglo (cuando el frontend lo pasa
+      // así) o como string JSON (patrón actual en GenerateDocumentModal)
+      let selectedActs: string[] = []
+      if (typeof p.selectedActs === 'string') {
+        try {
+          selectedActs = JSON.parse(p.selectedActs as string)
+        } catch {
+          selectedActs = []
+        }
+      } else if (Array.isArray(p.selectedActs)) {
+        selectedActs = p.selectedActs as string[]
+      }
+
+      // Miembros de JD ingresados para un nombramiento (dinámica)
+      let jdMembers: Array<{ name: string; cedula: string; position: string }> = []
+      if (typeof p.jdMembers === 'string') {
+        try {
+          jdMembers = JSON.parse(p.jdMembers as string)
+        } catch {
+          jdMembers = []
+        }
+      } else if (Array.isArray(p.jdMembers)) {
+        jdMembers = p.jdMembers as Array<{ name: string; cedula: string; position: string }>
+      }
+      jdMembers = jdMembers.filter((m) => m?.name?.trim())
+
+      const lines: string[] = [
         'Tipo de documento: ACTA DE ASAMBLEA',
         `Tipo de asamblea: ${s('meetingType') || 'ordinaria'}`,
         `Fecha de la asamblea: ${s('meetingDate')}`,
-        actsLine,
-        `Orden del día: ${s('agenda')}`,
-        `Decisiones adoptadas: ${s('resolutions')}`,
-        `Representación / asistentes: ${s('attendees') || '(extraer de los datos de la empresa o documentos fundamentales)'}`,
-        '',
-        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Incluye encabezado con identificación de la sociedad, convocatoria, quórum, desarrollo de la asamblea con discusión del orden del día, decisiones adoptadas, cierre y firma de los asistentes. Usa un estilo formal notarial.',
       ]
-        .filter((l) => l.length > 0)
-        .join('\n')
+
+      if (selectedActs.length) {
+        lines.push(`Actos a tratar: ${selectedActs.join('; ')}`)
+      }
+
+      // Nueva Junta Directiva (nombramiento)
+      if (jdMembers.length) {
+        lines.push('')
+        lines.push('Nuevos miembros de la Junta Directiva a nombrar:')
+        for (const m of jdMembers) {
+          const parts = [
+            m.position ? `${m.position}: ` : '',
+            m.name,
+            m.cedula ? ` (C.I. ${m.cedula})` : '',
+          ].join('')
+          lines.push(`  - ${parts}`)
+        }
+        if (s('newBoardDuration')) {
+          lines.push(`Duración del nuevo período: ${s('newBoardDuration')}`)
+        }
+      }
+
+      // Ratificación: reutiliza los datos de la empresa
+      if (selectedActs.includes('Ratificación de Junta Directiva')) {
+        lines.push('')
+        lines.push(
+          'Para la RATIFICACIÓN de la Junta Directiva, utiliza las mismas personas, con los mismos cargos y por la misma duración indicados en la sección DATOS DE LA EMPRESA. No inventes miembros nuevos.',
+        )
+      }
+
+      // Comisario
+      if (s('comisarioName')) {
+        lines.push('')
+        lines.push('Datos del Comisario a designar:')
+        lines.push(`  - Nombre: ${s('comisarioName')}`)
+        if (s('comisarioCedula')) lines.push(`  - Cédula: ${s('comisarioCedula')}`)
+        if (s('comisarioColegio'))
+          lines.push(`  - Colegio en el que está inscrito: ${s('comisarioColegio')}`)
+        if (s('comisarioCarnet'))
+          lines.push(`  - N° de carnet: ${s('comisarioCarnet')}`)
+      }
+
+      lines.push('')
+      lines.push(`Orden del día: ${s('agenda')}`)
+      lines.push(`Decisiones adoptadas: ${s('resolutions')}`)
+      lines.push(
+        `Representación / asistentes: ${s('attendees') || '(extraer de los datos de la empresa o documentos fundamentales)'}`,
+      )
+      lines.push('')
+      lines.push(
+        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Incluye encabezado con identificación de la sociedad, convocatoria, quórum, desarrollo de la asamblea con discusión del orden del día, decisiones adoptadas, cierre y firma de los asistentes. Usa un estilo formal notarial.',
+      )
+      return lines.filter((l) => l.length > 0).join('\n')
     }
 
     default:
@@ -260,6 +329,9 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
           }`
         : null,
       client.capital_social ? `Capital social: ${client.capital_social}` : null,
+      client.board_duration
+        ? `Duración de la Junta Directiva: ${client.board_duration}`
+        : null,
     ].filter(Boolean)
 
     const shareholders = client.shareholders ?? []
@@ -277,9 +349,12 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
 
     const repsLines = reps.length
       ? [
-          'Representantes legales:',
+          'Junta Directiva / Representantes legales:',
           ...reps.map(
-            (r) => `  - ${r.name}${r.cedula ? ` (C.I. ${r.cedula})` : ''}`,
+            (r) =>
+              `  - ${r.position ? `${r.position}: ` : ''}${r.name}${
+                r.cedula ? ` (C.I. ${r.cedula})` : ''
+              }`,
           ),
         ]
       : []
