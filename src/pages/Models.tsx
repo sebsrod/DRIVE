@@ -10,6 +10,8 @@ import {
   uploadModelDocument,
 } from '../lib/api'
 
+const MAX_MODELS = 25
+
 export default function Models() {
   const { user } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -46,6 +48,13 @@ export default function Models() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
+    if (models.length >= MAX_MODELS) {
+      setError(
+        `Has alcanzado el máximo de ${MAX_MODELS} modelos. Elimina alguno antes de subir uno nuevo.`,
+      )
+      if (inputRef.current) inputRef.current.value = ''
+      return
+    }
     try {
       setUploading(true)
       setError(null)
@@ -103,9 +112,14 @@ export default function Models() {
 
       <section className="mb-6 rounded-lg border border-slate-200 bg-white p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Documentos modelo
-          </h3>
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Documentos modelo
+            </h3>
+            <p className="text-xs text-slate-400">
+              {models.length} / {MAX_MODELS} modelos subidos
+            </p>
+          </div>
           <div>
             <input
               ref={inputRef}
@@ -116,8 +130,13 @@ export default function Models() {
             />
             <button
               onClick={() => inputRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || models.length >= MAX_MODELS}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              title={
+                models.length >= MAX_MODELS
+                  ? `Máximo ${MAX_MODELS} modelos`
+                  : undefined
+              }
             >
               {uploading ? 'Subiendo…' : '+ Subir modelo (PDF)'}
             </button>
