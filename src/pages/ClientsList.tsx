@@ -100,12 +100,23 @@ export default function ClientsList() {
               key={client.id}
               className="flex flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
             >
-              <Link
-                to={`/ejercicio/${slugFromScope(scope)}/clientes/${client.id}`}
-                className="text-lg font-semibold text-indigo-700 hover:underline"
-              >
-                📁 {client.name}
-              </Link>
+              <div className="flex items-start justify-between gap-2">
+                <Link
+                  to={`/ejercicio/${slugFromScope(scope)}/clientes/${client.id}`}
+                  className="min-w-0 flex-1 truncate text-lg font-semibold text-indigo-700 hover:underline"
+                >
+                  📁 {client.name}
+                </Link>
+                <span
+                  className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                    client.client_type === 'juridica'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-sky-100 text-sky-800'
+                  }`}
+                >
+                  {client.client_type === 'juridica' ? 'Jurídica' : 'Natural'}
+                </span>
+              </div>
               <dl className="mt-2 space-y-0.5 text-xs text-slate-600">
                 {client.cedula_rif && (
                   <div>

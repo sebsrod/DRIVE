@@ -209,6 +209,108 @@ export default function ClientView() {
         <p className="text-slate-500">Cargando…</p>
       ) : (
         <>
+          {client?.client_type === 'juridica' && (
+            <section className="mb-8 rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Datos de la empresa
+              </h3>
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                {client.registry_office && (
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs font-medium uppercase text-slate-500">
+                      Registro Mercantil
+                    </dt>
+                    <dd className="text-slate-800">{client.registry_office}</dd>
+                  </div>
+                )}
+                {client.registry_date && (
+                  <div>
+                    <dt className="text-xs font-medium uppercase text-slate-500">
+                      Fecha de registro
+                    </dt>
+                    <dd className="text-slate-800">
+                      {new Date(client.registry_date).toLocaleDateString('es-VE')}
+                    </dd>
+                  </div>
+                )}
+                {(client.registry_number || client.registry_volume) && (
+                  <div>
+                    <dt className="text-xs font-medium uppercase text-slate-500">
+                      Número / Tomo
+                    </dt>
+                    <dd className="text-slate-800">
+                      {client.registry_number || '—'}
+                      {client.registry_volume
+                        ? ` / Tomo ${client.registry_volume}`
+                        : ''}
+                    </dd>
+                  </div>
+                )}
+                {client.capital_social && (
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs font-medium uppercase text-slate-500">
+                      Capital social
+                    </dt>
+                    <dd className="text-slate-800">{client.capital_social}</dd>
+                  </div>
+                )}
+              </dl>
+
+              {client.shareholders && client.shareholders.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold uppercase text-slate-500">
+                    Accionistas
+                  </h4>
+                  <ul className="mt-1 divide-y divide-slate-100 text-sm">
+                    {client.shareholders.map((s, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between py-1.5"
+                      >
+                        <div>
+                          <span className="font-medium text-slate-800">
+                            {s.name}
+                          </span>
+                          {s.cedula && (
+                            <span className="ml-2 text-xs text-slate-500">
+                              ({s.cedula})
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {s.percentage}%
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {client.legal_representatives &&
+                client.legal_representatives.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-xs font-semibold uppercase text-slate-500">
+                      Representantes legales
+                    </h4>
+                    <ul className="mt-1 divide-y divide-slate-100 text-sm">
+                      {client.legal_representatives.map((r, i) => (
+                        <li key={i} className="py-1.5">
+                          <span className="font-medium text-slate-800">
+                            {r.name}
+                          </span>
+                          {r.cedula && (
+                            <span className="ml-2 text-xs text-slate-500">
+                              ({r.cedula})
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+            </section>
+          )}
+
           <section className="mb-8">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
