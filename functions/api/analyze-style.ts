@@ -107,7 +107,13 @@ export async function onRequestPost(context: Context): Promise<Response> {
   const { request, env } = context
 
   if (!env.GEMINI_API_KEY) {
-    return json({ error: 'GEMINI_API_KEY no está configurada.' }, 500)
+    const keys = Object.keys(env).filter((k) => !k.startsWith('__')).join(', ')
+    return json(
+      {
+        error: `GEMINI_API_KEY no está configurada. Variables disponibles: [${keys || 'ninguna'}]. Verifica que el nombre sea exacto en Cloudflare → Settings → Variables and Secrets para Production.`,
+      },
+      500,
+    )
   }
 
   const auth = await verifyAuth(request, env)
