@@ -291,43 +291,108 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
     }
 
     case 'acta_asamblea': {
-      // selectedActs puede llegar como arreglo (cuando el frontend lo pasa
-      // así) o como string JSON (patrón actual en GenerateDocumentModal)
-      let selectedActs: string[] = []
-      if (typeof p.selectedActs === 'string') {
-        try {
-          selectedActs = JSON.parse(p.selectedActs as string)
-        } catch {
-          selectedActs = []
+      // Helper para parsear arreglos que pueden venir como JSON string
+      const parseArray = <T>(raw: unknown): T[] => {
+        if (Array.isArray(raw)) return raw as T[]
+        if (typeof raw === 'string') {
+          try {
+            const parsed = JSON.parse(raw)
+            return Array.isArray(parsed) ? (parsed as T[]) : []
+          } catch {
+            return []
+          }
         }
-      } else if (Array.isArray(p.selectedActs)) {
-        selectedActs = p.selectedActs as string[]
+        return []
       }
 
-      // Miembros de JD ingresados para un nombramiento (dinámica)
-      let jdMembers: Array<{ name: string; cedula: string; position: string }> = []
-      if (typeof p.jdMembers === 'string') {
-        try {
-          jdMembers = JSON.parse(p.jdMembers as string)
-        } catch {
-          jdMembers = []
-        }
-      } else if (Array.isArray(p.jdMembers)) {
-        jdMembers = p.jdMembers as Array<{ name: string; cedula: string; position: string }>
+      const selectedActs = parseArray<string>(p.selectedActs)
+      const jdMembers = parseArray<{
+        name: string
+        cedula: string
+        position: string
+      }>(p.jdMembers).filter((m) => m?.name?.trim())
+      const reformaClauses = parseArray<{
+        numero: string
+        textoNuevo: string
+      }>(p.reformaClauses).filter(
+        (c) => c?.numero?.trim() || c?.textoNuevo?.trim(),
+      )
+      const disolucionFacultades = parseArray<string>(p.disolucionFacultades)
+      const attendingIdxs = parseArray<number>(p.attendingIdxs)
+
+      // Formatea "Nombre|Cédula" → "Nombre (C.I. Cédula)"
+      const parsePerson = (raw: string) => {
+        if (!raw) return ''
+        const [name, cedula] = raw.split('|')
+        return cedula ? `${name} (C.I. ${cedula})` : name
       }
-      jdMembers = jdMembers.filter((m) => m?.name?.trim())
 
-      const lines: string[] = [
-        'Tipo de documento: ACTA DE ASAMBLEA',
-        `Tipo de asamblea: ${s('meetingType') || 'ordinaria'}`,
-        `Fecha de la asamblea: ${s('meetingDate')}`,
-      ]
+      const lines: string[] = ['Tipo de documento: ACTA DE ASAMBLEA']
 
+      // ---------- Datos generales de la asamblea ----------
+      lines.push(`Tipo de asamblea: ${s('meetingType') || 'ordinaria'}`)
+      if (s('meetingDate')) lines.push(`Fecha: ${s('meetingDate')}`)
+      if (s('meetingTime')) lines.push(`Hora: ${s('meetingTime')}`)
+      if (s('meetingPlace')) {
+        lines.push(`Lugar: ${s('meetingPlace')}`)
+      } else {
+        lines.push('Lugar: (usa el domicilio de la empresa indicado en DATOS DE LA EMPRESA)')
+      }
+      const convocation = s('convocationType')
+      if (convocation === 'universal') {
+        lines.push('Convocatoria: ASAMBLEA UNIVERSAL, sin previa convocatoria, con la totalidad de los accionistas presentes.')
+      } else if (convocation === 'prensa') {
+        lines.push('Convocatoria: realizada mediante publicación en prensa conforme a los estatutos.')
+      } else if (convocation === 'carta') {
+        lines.push('Convocatoria: realizada mediante carta dirigida a cada accionista.')
+      }
+
+      // ---------- Presidencia y secretaría ----------
+      if (s('assemblyPresident')) {
+        lines.push(
+          `Presidente de la asamblea: ${parsePerson(s('assemblyPresident'))}`,
+        )
+      }
+      if (s('assemblySecretary')) {
+        lines.push(
+          `Secretario de la asamblea: ${parsePerson(s('assemblySecretary'))}`,
+        )
+      }
+
+      // ---------- Quórum ----------
+      if (attendingIdxs.length > 0) {
+        lines.push('')
+        lines.push(
+          `Accionistas presentes: ${attendingIdxs.length} accionistas según los índices ${JSON.stringify(attendingIdxs)} de la lista en DATOS DE LA EMPRESA. Verifica sus porcentajes y calcula el quórum total en el encabezado del acta.`,
+        )
+      }
+
+      // ---------- Votación y lectura ----------
+      const votingType = s('votingType')
+      if (votingType === 'unanime') {
+        lines.push('Votación: UNÁNIME.')
+      } else if (votingType === 'mayoria') {
+        lines.push(
+          `Votación: POR MAYORÍA${s('votingPercentage') ? ` (${s('votingPercentage')}% a favor)` : ''}.`,
+        )
+      } else if (votingType === 'disidencia') {
+        lines.push(
+          `Votación: CON DISIDENCIA${s('votingPercentage') ? ` (${s('votingPercentage')}% a favor)` : ''}.`,
+        )
+      }
+      if (s('actaReading') === 'true') {
+        lines.push(
+          'Incluir al final del acta constancia expresa de que se dio lectura al acta y fue aprobada por los presentes.',
+        )
+      }
+
+      // ---------- Actos a tratar ----------
       if (selectedActs.length) {
+        lines.push('')
         lines.push(`Actos a tratar: ${selectedActs.join('; ')}`)
       }
 
-      // Nueva Junta Directiva (nombramiento)
+      // ---------- Nombramiento de Junta Directiva ----------
       if (jdMembers.length) {
         lines.push('')
         lines.push('Nuevos miembros de la Junta Directiva a nombrar:')
@@ -344,7 +409,7 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
         }
       }
 
-      // Ratificación: reutiliza los datos de la empresa
+      // ---------- Ratificación de JD ----------
       if (selectedActs.includes('Ratificación de Junta Directiva')) {
         lines.push('')
         lines.push(
@@ -352,7 +417,7 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
         )
       }
 
-      // Comisario
+      // ---------- Comisario ----------
       if (s('comisarioName')) {
         lines.push('')
         lines.push('Datos del Comisario a designar:')
@@ -364,13 +429,150 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
           lines.push(`  - N° de carnet: ${s('comisarioCarnet')}`)
       }
 
+      // ---------- Aumento de capital ----------
+      if (s('aumentoNewCapital') || s('aumentoPrevCapital')) {
+        lines.push('')
+        lines.push('Aumento de capital social:')
+        if (s('aumentoPrevCapital'))
+          lines.push(`  - Capital anterior: ${s('aumentoPrevCapital')}`)
+        if (s('aumentoNewCapital'))
+          lines.push(`  - Capital nuevo: ${s('aumentoNewCapital')}`)
+        if (s('aumentoModalidad'))
+          lines.push(`  - Modalidad: ${s('aumentoModalidad')}`)
+        if (s('aumentoValorNominal'))
+          lines.push(`  - Valor nominal por acción: ${s('aumentoValorNominal')}`)
+        if (s('aumentoRenunciaPreferencia'))
+          lines.push(
+            `  - Derecho de preferencia: ${s('aumentoRenunciaPreferencia')}`,
+          )
+      }
+
+      // ---------- Disminución de capital ----------
+      if (s('disminucionNewCapital') || s('disminucionPrevCapital')) {
+        lines.push('')
+        lines.push('Disminución de capital social:')
+        if (s('disminucionPrevCapital'))
+          lines.push(`  - Capital anterior: ${s('disminucionPrevCapital')}`)
+        if (s('disminucionNewCapital'))
+          lines.push(`  - Capital nuevo: ${s('disminucionNewCapital')}`)
+        if (s('disminucionCausa'))
+          lines.push(`  - Causa: ${s('disminucionCausa')}`)
+      }
+
+      // ---------- Dividendos ----------
+      if (s('dividendosMonto')) {
+        lines.push('')
+        lines.push('Distribución de dividendos:')
+        lines.push(`  - Monto total: ${s('dividendosMonto')}`)
+        if (s('dividendosEjercicio'))
+          lines.push(`  - Ejercicio económico: ${s('dividendosEjercicio')}`)
+        if (s('dividendosFecha'))
+          lines.push(`  - Fecha de pago: ${s('dividendosFecha')}`)
+      }
+
+      // ---------- Venta / cesión de acciones ----------
+      if (s('ventaCompradorNombre') || s('ventaVendedor')) {
+        lines.push('')
+        lines.push('Venta / cesión de acciones:')
+        if (s('ventaVendedor'))
+          lines.push(`  - Vendedor: ${parsePerson(s('ventaVendedor'))}`)
+        if (s('ventaCompradorNombre'))
+          lines.push(`  - Comprador: ${s('ventaCompradorNombre')}`)
+        if (s('ventaCompradorCedula'))
+          lines.push(`    Cédula del comprador: ${s('ventaCompradorCedula')}`)
+        if (s('ventaCompradorEstadoCivil'))
+          lines.push(`    Estado civil: ${s('ventaCompradorEstadoCivil')}`)
+        if (s('ventaCompradorDomicilio'))
+          lines.push(`    Domicilio: ${s('ventaCompradorDomicilio')}`)
+        if (s('ventaNumeroAcciones'))
+          lines.push(`  - N° de acciones: ${s('ventaNumeroAcciones')}`)
+        if (s('ventaPrecio'))
+          lines.push(`  - Precio: ${s('ventaPrecio')}`)
+        if (s('ventaRenunciaPreferencia'))
+          lines.push(
+            `  - Derecho de preferencia de los demás accionistas: ${s('ventaRenunciaPreferencia')}`,
+          )
+      }
+
+      // ---------- Reforma parcial de estatutos ----------
+      if (reformaClauses.length) {
+        lines.push('')
+        lines.push('Reforma parcial de estatutos (cláusulas a reformar):')
+        for (const c of reformaClauses) {
+          lines.push(`  - Cláusula ${c.numero || '(sin numerar)'}:`)
+          if (c.textoNuevo)
+            lines.push(
+              `    Redacta la nueva cláusula en estilo estatutario a partir de esta descripción: ${c.textoNuevo}`,
+            )
+        }
+      }
+
+      // ---------- Cambio de domicilio ----------
+      if (s('cambioDomicilioNuevo')) {
+        lines.push('')
+        lines.push(
+          `Cambio de domicilio social — nueva dirección: ${s('cambioDomicilioNuevo')}`,
+        )
+      }
+
+      // ---------- Cambio de objeto social ----------
+      if (s('cambioObjetoNuevo')) {
+        lines.push('')
+        lines.push(
+          `Modificación del objeto social — nuevo objeto (redáctalo en estilo estatutario): ${s('cambioObjetoNuevo')}`,
+        )
+      }
+
+      // ---------- Prórroga de duración ----------
+      if (s('prorrogaNueva')) {
+        lines.push('')
+        lines.push(
+          `Prórroga de duración de la compañía: ${s('prorrogaNueva')}`,
+        )
+      }
+
+      // ---------- Disolución y liquidación ----------
+      if (s('disolucionLiquidadorNombre')) {
+        lines.push('')
+        lines.push('Disolución y liquidación:')
+        lines.push(`  - Liquidador: ${s('disolucionLiquidadorNombre')}`)
+        if (s('disolucionLiquidadorCedula'))
+          lines.push(`    Cédula: ${s('disolucionLiquidadorCedula')}`)
+        if (disolucionFacultades.length)
+          lines.push(
+            `  - Facultades del liquidador: ${disolucionFacultades.join('; ')}`,
+          )
+      }
+
+      // ---------- Fusión ----------
+      if (s('fusionAbsorbente') || s('fusionAbsorbida')) {
+        lines.push('')
+        lines.push('Fusión:')
+        if (s('fusionAbsorbente'))
+          lines.push(`  - Sociedad absorbente: ${s('fusionAbsorbente')}`)
+        if (s('fusionAbsorbida'))
+          lines.push(`  - Sociedad absorbida: ${s('fusionAbsorbida')}`)
+        if (s('fusionFechaEfectiva'))
+          lines.push(`  - Fecha efectiva: ${s('fusionFechaEfectiva')}`)
+      }
+
+      // ---------- Transformación societaria ----------
+      if (s('transformacionTipoNuevo')) {
+        lines.push('')
+        lines.push(
+          `Transformación societaria: ${s('transformacionTipoNuevo')}`,
+        )
+      }
+
+      // ---------- Orden del día / decisiones / asistentes libres ----------
       lines.push('')
-      lines.push(`Orden del día: ${s('agenda')}`)
-      lines.push(`Decisiones adoptadas: ${s('resolutions')}`)
-      lines.push(
-        `Representación / asistentes: ${s('attendees') || '(extraer de los datos de la empresa o documentos fundamentales)'}`,
-      )
-      lines.push('')
+      if (s('agenda')) lines.push(`Orden del día: ${s('agenda')}`)
+      if (s('resolutions'))
+        lines.push(`Decisiones adoptadas (resumen libre): ${s('resolutions')}`)
+      if (s('attendees'))
+        lines.push(`Notas adicionales sobre asistentes: ${s('attendees')}`)
+
+      // ---------- Persona que participa ----------
       if (s('notaryPresenter')) {
         lines.push('')
         lines.push(
@@ -378,8 +580,9 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
         )
       }
 
+      lines.push('')
       lines.push(
-        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Incluye encabezado con identificación de la sociedad, convocatoria, quórum, desarrollo de la asamblea con discusión del orden del día, decisiones adoptadas, cierre y firma de los asistentes. Al final incluye la cláusula de autorización al presentante para la inscripción ante el Registro Mercantil. Usa un estilo formal notarial.',
+        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Estructura sugerida: (1) encabezado con fecha completa en letras, hora, lugar e identificación de la sociedad incluyendo datos de registro; (2) indicación del tipo de convocatoria y, si aplica, el texto de la misma; (3) verificación de quórum con la lista de accionistas presentes y el porcentaje total representado; (4) designación de presidente y secretario de la asamblea; (5) desarrollo de la asamblea con discusión de cada punto del orden del día y las decisiones adoptadas (usa los datos estructurados exactos de cada acto); (6) modalidad de votación; (7) lectura y aprobación del acta si corresponde; (8) cierre y firma de los asistentes; (9) cláusula final de autorización al presentante para la inscripción ante el Registro Mercantil. Usa estilo formal notarial venezolano.',
       )
       return lines.filter((l) => l.length > 0).join('\n')
     }

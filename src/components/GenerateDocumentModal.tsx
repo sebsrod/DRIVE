@@ -37,6 +37,17 @@ const COMMON_ASSEMBLY_ACTS = [
 const ACT_NOMBRAMIENTO_JD = 'Nombramiento de Junta Directiva'
 const ACT_RATIFICACION_JD = 'Ratificación de Junta Directiva'
 const ACT_NOMBRAMIENTO_COMISARIO = 'Nombramiento de Comisario'
+const ACT_AUMENTO_CAPITAL = 'Aumento de capital social'
+const ACT_DISMINUCION_CAPITAL = 'Disminución de capital social'
+const ACT_DIVIDENDOS = 'Distribución de dividendos / utilidades'
+const ACT_VENTA_ACCIONES = 'Venta / cesión de acciones'
+const ACT_REFORMA_ESTATUTOS = 'Reforma parcial de estatutos'
+const ACT_CAMBIO_DOMICILIO = 'Cambio de domicilio social'
+const ACT_CAMBIO_OBJETO = 'Modificación del objeto social'
+const ACT_PRORROGA = 'Prórroga de duración de la compañía'
+const ACT_DISOLUCION = 'Disolución y liquidación'
+const ACT_FUSION = 'Fusión'
+const ACT_TRANSFORMACION = 'Transformación de tipo societario'
 
 interface Props {
   open: boolean
@@ -263,7 +274,7 @@ export default function GenerateDocumentModal({
           )}
           {documentType === 'laboral' && <LaboralFields params={params} setParam={setParam} />}
           {documentType === 'acta_asamblea' && (
-            <ActaFields params={params} setParam={setParam} />
+            <ActaFields params={params} setParam={setParam} client={client} />
           )}
           {documentType === 'documento_constitutivo' && (
             <ConstitutivoFields params={params} setParam={setParam} />
@@ -585,7 +596,11 @@ function LaboralFields(props: FieldProps) {
   )
 }
 
-function ActaFields({ params, setParam }: FieldProps) {
+interface ActaFieldsProps extends FieldProps {
+  client: Client
+}
+
+function ActaFields({ params, setParam, client }: ActaFieldsProps) {
   const selectedActs: string[] = params.selectedActs
     ? JSON.parse(params.selectedActs)
     : []
@@ -595,9 +610,45 @@ function ActaFields({ params, setParam }: FieldProps) {
       ? JSON.parse(params.jdMembers)
       : [{ name: '', cedula: '', position: '' }]
 
+  // Accionistas presentes: arreglo de índices del client.shareholders
+  const attendingIdxs: number[] = params.attendingIdxs
+    ? JSON.parse(params.attendingIdxs)
+    : []
+
   const nombramientoJD = selectedActs.includes(ACT_NOMBRAMIENTO_JD)
   const ratificacionJD = selectedActs.includes(ACT_RATIFICACION_JD)
   const nombramientoComisario = selectedActs.includes(ACT_NOMBRAMIENTO_COMISARIO)
+  const aumentoCapital = selectedActs.includes(ACT_AUMENTO_CAPITAL)
+  const disminucionCapital = selectedActs.includes(ACT_DISMINUCION_CAPITAL)
+  const dividendos = selectedActs.includes(ACT_DIVIDENDOS)
+  const ventaAcciones = selectedActs.includes(ACT_VENTA_ACCIONES)
+  const reformaEstatutos = selectedActs.includes(ACT_REFORMA_ESTATUTOS)
+  const cambioDomicilio = selectedActs.includes(ACT_CAMBIO_DOMICILIO)
+  const cambioObjeto = selectedActs.includes(ACT_CAMBIO_OBJETO)
+  const prorroga = selectedActs.includes(ACT_PRORROGA)
+  const disolucion = selectedActs.includes(ACT_DISOLUCION)
+  const fusion = selectedActs.includes(ACT_FUSION)
+  const transformacion = selectedActs.includes(ACT_TRANSFORMACION)
+
+  // Cálculo automático del quórum presente
+  const shareholders = client.shareholders ?? []
+  const quorumPresent = attendingIdxs.reduce((acc, i) => {
+    const s = shareholders[i]
+    return acc + (s ? Number(s.percentage) || 0 : 0)
+  }, 0)
+
+  // Lista de personas disponibles para presidencia/secretaría
+  // (accionistas + representantes legales del cliente)
+  const eligiblePeople = [
+    ...shareholders.map((s) => ({
+      value: `${s.name}|${s.cedula}`,
+      label: `${s.name}${s.cedula ? ` (${s.cedula})` : ''}`,
+    })),
+    ...(client.legal_representatives ?? []).map((r) => ({
+      value: `${r.name}|${r.cedula}`,
+      label: `${r.position ? `${r.position}: ` : ''}${r.name}${r.cedula ? ` (${r.cedula})` : ''}`,
+    })),
+  ]
 
   const toggleAct = (act: string) => {
     const next = selectedActs.includes(act)
@@ -611,6 +662,53 @@ function ActaFields({ params, setParam }: FieldProps) {
         next.map((a, i) => `${i + 1}. ${a}`).join('\n'),
       )
     }
+  }
+
+  const toggleAttending = (idx: number) => {
+    const next = attendingIdxs.includes(idx)
+      ? attendingIdxs.filter((i) => i !== idx)
+      : [...attendingIdxs, idx]
+    setParam('attendingIdxs', JSON.stringify(next))
+  }
+
+  // -------- Cláusulas de reforma de estatutos (lista dinámica) --------
+  const reformaClauses: Array<{ numero: string; textoNuevo: string }> =
+    params.reformaClauses
+      ? JSON.parse(params.reformaClauses)
+      : [{ numero: '', textoNuevo: '' }]
+
+  const updateReformaClause = (
+    i: number,
+    patch: Partial<{ numero: string; textoNuevo: string }>,
+  ) => {
+    const next = reformaClauses.map((c, idx) =>
+      idx === i ? { ...c, ...patch } : c,
+    )
+    setParam('reformaClauses', JSON.stringify(next))
+  }
+  const addReformaClause = () => {
+    setParam(
+      'reformaClauses',
+      JSON.stringify([...reformaClauses, { numero: '', textoNuevo: '' }]),
+    )
+  }
+  const removeReformaClause = (i: number) => {
+    const next =
+      reformaClauses.length === 1
+        ? [{ numero: '', textoNuevo: '' }]
+        : reformaClauses.filter((_, idx) => idx !== i)
+    setParam('reformaClauses', JSON.stringify(next))
+  }
+
+  // -------- Facultades del liquidador (checkboxes) --------
+  const disolucionFacultades: string[] = params.disolucionFacultades
+    ? JSON.parse(params.disolucionFacultades)
+    : []
+  const toggleDisolucionFacultad = (f: string) => {
+    const next = disolucionFacultades.includes(f)
+      ? disolucionFacultades.filter((x) => x !== f)
+      : [...disolucionFacultades, f]
+    setParam('disolucionFacultades', JSON.stringify(next))
   }
 
   const updateJdMember = (
@@ -635,24 +733,185 @@ function ActaFields({ params, setParam }: FieldProps) {
   }
 
   return (
-    <div className="space-y-3">
-      <Select
-        params={params}
-        setParam={setParam}
-        label="Tipo de asamblea"
-        name="meetingType"
-        options={[
-          { value: 'ordinaria', label: 'Ordinaria' },
-          { value: 'extraordinaria', label: 'Extraordinaria' },
-        ]}
-      />
-      <Field
-        params={params}
-        setParam={setParam}
-        label="Fecha de la asamblea"
-        name="meetingDate"
-        type="date"
-      />
+    <div className="space-y-4">
+      {/* -------- Datos generales de la asamblea -------- */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Datos generales de la asamblea
+        </legend>
+        <div className="grid grid-cols-2 gap-2">
+          <Select
+            params={params}
+            setParam={setParam}
+            label="Tipo de asamblea"
+            name="meetingType"
+            options={[
+              { value: 'ordinaria', label: 'Ordinaria' },
+              { value: 'extraordinaria', label: 'Extraordinaria' },
+            ]}
+          />
+          <Select
+            params={params}
+            setParam={setParam}
+            label="Tipo de convocatoria"
+            name="convocationType"
+            options={[
+              { value: 'universal', label: 'Universal (sin convocatoria previa)' },
+              { value: 'prensa', label: 'Convocada por prensa' },
+              { value: 'carta', label: 'Convocada por carta' },
+            ]}
+          />
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Fecha"
+            name="meetingDate"
+            type="date"
+          />
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Hora"
+            name="meetingTime"
+            type="time"
+          />
+        </div>
+        <div className="mt-2">
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Lugar"
+            name="meetingPlace"
+            placeholder={
+              client.address
+                ? `Por defecto: ${client.address}`
+                : 'Dirección donde se celebra la asamblea'
+            }
+          />
+          <p className="mt-1 text-[11px] text-slate-400">
+            Si lo dejas vacío, la IA usa el domicilio del cliente.
+          </p>
+        </div>
+      </fieldset>
+
+      {/* -------- Presidencia y Secretaría -------- */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Presidencia y Secretaría
+        </legend>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Select
+            params={params}
+            setParam={setParam}
+            label="Presidente de la asamblea"
+            name="assemblyPresident"
+            options={[
+              { value: '', label: '— seleccionar —' },
+              ...eligiblePeople,
+            ]}
+          />
+          <Select
+            params={params}
+            setParam={setParam}
+            label="Secretario de la asamblea"
+            name="assemblySecretary"
+            options={[
+              { value: '', label: '— seleccionar —' },
+              ...eligiblePeople,
+            ]}
+          />
+        </div>
+        {eligiblePeople.length === 0 && (
+          <p className="mt-2 text-[11px] text-amber-700">
+            Este cliente no tiene accionistas ni representantes registrados.
+            Añádelos desde la tarjeta del cliente para poder elegir
+            presidencia y secretaría.
+          </p>
+        )}
+      </fieldset>
+
+      {/* -------- Asistentes y quórum -------- */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Accionistas presentes
+        </legend>
+        {shareholders.length === 0 ? (
+          <p className="text-xs text-slate-500">
+            No hay accionistas registrados en el cliente. La IA usará los datos
+            que tenga disponibles o los extraerá de los documentos fundamentales.
+          </p>
+        ) : (
+          <>
+            <ul className="space-y-1 rounded-lg bg-white p-2">
+              {shareholders.map((s, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id={`att-${i}`}
+                    checked={attendingIdxs.includes(i)}
+                    onChange={() => toggleAttending(i)}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <label
+                    htmlFor={`att-${i}`}
+                    className="flex-1 text-xs text-slate-700"
+                  >
+                    {s.name}
+                    {s.cedula ? ` (${s.cedula})` : ''} — {s.percentage}%
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2">
+              <span className="text-xs font-medium text-indigo-900">
+                Quórum presente
+              </span>
+              <span className="text-sm font-bold text-indigo-900">
+                {quorumPresent.toFixed(2)}%
+              </span>
+            </div>
+          </>
+        )}
+      </fieldset>
+
+      {/* -------- Votación y lectura -------- */}
+      <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <legend className="px-2 text-xs font-semibold text-slate-700">
+          Votación y cierre
+        </legend>
+        <div className="grid grid-cols-2 gap-2">
+          <Select
+            params={params}
+            setParam={setParam}
+            label="Tipo de votación"
+            name="votingType"
+            options={[
+              { value: 'unanime', label: 'Unánime' },
+              { value: 'mayoria', label: 'Por mayoría' },
+              { value: 'disidencia', label: 'Con disidencia' },
+            ]}
+          />
+          <Field
+            params={params}
+            setParam={setParam}
+            label="% de votos a favor (opcional)"
+            name="votingPercentage"
+            type="number"
+            placeholder="100"
+          />
+        </div>
+        <label className="mt-2 flex items-center gap-2 text-xs text-slate-700">
+          <input
+            type="checkbox"
+            checked={params.actaReading === 'true'}
+            onChange={(e) =>
+              setParam('actaReading', e.target.checked ? 'true' : 'false')
+            }
+            className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          Incluir constancia de lectura y aprobación del acta al cierre
+        </label>
+      </fieldset>
 
       {/* Actos predeterminados */}
       <div>
@@ -808,6 +1067,440 @@ function ActaFields({ params, setParam }: FieldProps) {
               name="comisarioCarnet"
             />
           </div>
+        </fieldset>
+      )}
+
+      {/* -------- Aumento de capital -------- */}
+      {aumentoCapital && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Aumento de capital social
+          </legend>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Capital anterior"
+                name="aumentoPrevCapital"
+                placeholder={
+                  client.capital_social ? `Actual: ${client.capital_social}` : ''
+                }
+              />
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Capital nuevo"
+                name="aumentoNewCapital"
+              />
+            </div>
+            <Select
+              params={params}
+              setParam={setParam}
+              label="Modalidad del aumento"
+              name="aumentoModalidad"
+              options={[
+                { value: 'emision_nuevas_acciones', label: 'Emisión de nuevas acciones' },
+                { value: 'capitalizacion_utilidades', label: 'Capitalización de utilidades' },
+                { value: 'aporte_adicional', label: 'Aporte adicional de accionistas' },
+                { value: 'otro', label: 'Otra modalidad' },
+              ]}
+            />
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Valor nominal por acción (nuevo)"
+              name="aumentoValorNominal"
+              placeholder="Ej: Bs. 1,00"
+            />
+            <Select
+              params={params}
+              setParam={setParam}
+              label="Derecho de preferencia"
+              name="aumentoRenunciaPreferencia"
+              options={[
+                { value: 'renunciado', label: 'Renunciado por los accionistas' },
+                { value: 'ejercido', label: 'Ejercido por los accionistas' },
+                { value: 'no_aplica', label: 'No aplica / no se pronunció' },
+              ]}
+            />
+          </div>
+        </fieldset>
+      )}
+
+      {/* -------- Disminución de capital -------- */}
+      {disminucionCapital && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Disminución de capital social
+          </legend>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Capital anterior"
+                name="disminucionPrevCapital"
+                placeholder={
+                  client.capital_social ? `Actual: ${client.capital_social}` : ''
+                }
+              />
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Capital nuevo"
+                name="disminucionNewCapital"
+              />
+            </div>
+            <Select
+              params={params}
+              setParam={setParam}
+              label="Causa de la disminución"
+              name="disminucionCausa"
+              options={[
+                { value: 'devolucion_accionistas', label: 'Devolución a accionistas' },
+                { value: 'absorcion_perdidas', label: 'Absorción de pérdidas' },
+                { value: 'otro', label: 'Otra causa' },
+              ]}
+            />
+          </div>
+        </fieldset>
+      )}
+
+      {/* -------- Distribución de dividendos -------- */}
+      {dividendos && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Distribución de dividendos
+          </legend>
+          <div className="space-y-2">
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Monto total a distribuir"
+              name="dividendosMonto"
+              placeholder="Ej: Bs. 500.000,00"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Ejercicio económico"
+                name="dividendosEjercicio"
+                placeholder="Ej: 2025"
+              />
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Fecha de pago"
+                name="dividendosFecha"
+                type="date"
+              />
+            </div>
+          </div>
+        </fieldset>
+      )}
+
+      {/* -------- Venta / cesión de acciones -------- */}
+      {ventaAcciones && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Venta / cesión de acciones
+          </legend>
+          <div className="space-y-2">
+            <Select
+              params={params}
+              setParam={setParam}
+              label="Vendedor (accionista cedente)"
+              name="ventaVendedor"
+              options={[
+                { value: '', label: '— seleccionar —' },
+                ...shareholders.map((s) => ({
+                  value: `${s.name}|${s.cedula}`,
+                  label: `${s.name}${s.cedula ? ` (${s.cedula})` : ''} — ${s.percentage}%`,
+                })),
+              ]}
+            />
+            <div className="rounded-lg bg-white p-2">
+              <p className="mb-1 text-[11px] font-semibold uppercase text-slate-500">
+                Datos del comprador (cesionario)
+              </p>
+              <div className="space-y-2">
+                <Field
+                  params={params}
+                  setParam={setParam}
+                  label="Nombre completo"
+                  name="ventaCompradorNombre"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    params={params}
+                    setParam={setParam}
+                    label="Cédula"
+                    name="ventaCompradorCedula"
+                  />
+                  <Field
+                    params={params}
+                    setParam={setParam}
+                    label="Estado civil"
+                    name="ventaCompradorEstadoCivil"
+                    placeholder="Soltero, casado…"
+                  />
+                </div>
+                <Field
+                  params={params}
+                  setParam={setParam}
+                  label="Domicilio"
+                  name="ventaCompradorDomicilio"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                params={params}
+                setParam={setParam}
+                label="N° de acciones transferidas"
+                name="ventaNumeroAcciones"
+                type="number"
+              />
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Precio total"
+                name="ventaPrecio"
+                placeholder="Ej: Bs. 50.000,00"
+              />
+            </div>
+            <Select
+              params={params}
+              setParam={setParam}
+              label="Derecho de preferencia de los demás accionistas"
+              name="ventaRenunciaPreferencia"
+              options={[
+                { value: 'renunciado', label: 'Renunciado' },
+                { value: 'ejercido', label: 'Ejercido' },
+                { value: 'no_aplica', label: 'No aplica' },
+              ]}
+            />
+          </div>
+        </fieldset>
+      )}
+
+      {/* -------- Cambio de domicilio social -------- */}
+      {cambioDomicilio && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Cambio de domicilio social
+          </legend>
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Nueva dirección"
+            name="cambioDomicilioNuevo"
+            placeholder="Nueva dirección completa"
+          />
+          {client.address && (
+            <p className="mt-1 text-[11px] text-slate-400">
+              Domicilio actual: {client.address}
+            </p>
+          )}
+        </fieldset>
+      )}
+
+      {/* -------- Modificación del objeto social -------- */}
+      {cambioObjeto && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Modificación del objeto social
+          </legend>
+          <TextArea
+            params={params}
+            setParam={setParam}
+            label="Nuevo objeto social"
+            name="cambioObjetoNuevo"
+            placeholder="Describe brevemente el nuevo objeto; la IA lo redactará en estilo estatutario."
+            rows={3}
+          />
+        </fieldset>
+      )}
+
+      {/* -------- Prórroga de duración -------- */}
+      {prorroga && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Prórroga de duración de la compañía
+          </legend>
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Nueva duración"
+            name="prorrogaNueva"
+            placeholder="Ej: 20 años adicionales, o hasta 2050"
+          />
+        </fieldset>
+      )}
+
+      {/* -------- Disolución y liquidación -------- */}
+      {disolucion && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Disolución y liquidación
+          </legend>
+          <div className="space-y-2">
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Nombre del liquidador"
+              name="disolucionLiquidadorNombre"
+            />
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Cédula del liquidador"
+              name="disolucionLiquidadorCedula"
+            />
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                Facultades del liquidador
+              </label>
+              <ul className="space-y-1 rounded-lg bg-white p-2">
+                {[
+                  'Representación judicial y extrajudicial',
+                  'Venta de activos',
+                  'Cobro de acreencias',
+                  'Pago de pasivos',
+                  'Distribución del remanente',
+                  'Cancelación de inscripciones fiscales',
+                ].map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id={`fac-${f}`}
+                      checked={disolucionFacultades.includes(f)}
+                      onChange={() => toggleDisolucionFacultad(f)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label
+                      htmlFor={`fac-${f}`}
+                      className="text-xs text-slate-700"
+                    >
+                      {f}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </fieldset>
+      )}
+
+      {/* -------- Fusión -------- */}
+      {fusion && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Fusión
+          </legend>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Sociedad absorbente"
+                name="fusionAbsorbente"
+              />
+              <Field
+                params={params}
+                setParam={setParam}
+                label="Sociedad absorbida"
+                name="fusionAbsorbida"
+              />
+            </div>
+            <Field
+              params={params}
+              setParam={setParam}
+              label="Fecha efectiva"
+              name="fusionFechaEfectiva"
+              type="date"
+            />
+          </div>
+        </fieldset>
+      )}
+
+      {/* -------- Transformación societaria -------- */}
+      {transformacion && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Transformación de tipo societario
+          </legend>
+          <Field
+            params={params}
+            setParam={setParam}
+            label="Nuevo tipo societario"
+            name="transformacionTipoNuevo"
+            placeholder="Ej: de C.A. a S.R.L."
+          />
+        </fieldset>
+      )}
+
+      {/* -------- Reforma parcial de estatutos -------- */}
+      {reformaEstatutos && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Reforma parcial de estatutos
+          </legend>
+          <p className="mb-2 text-[11px] text-slate-500">
+            Indica qué cláusula se reforma y el nuevo texto. La IA lo redactará
+            en estilo estatutario.
+          </p>
+          <ul className="space-y-2">
+            {reformaClauses.map((c, i) => (
+              <li key={i} className="space-y-1 rounded-lg bg-white p-2">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                      Cláusula N°
+                    </label>
+                    <input
+                      type="text"
+                      value={c.numero}
+                      onChange={(e) =>
+                        updateReformaClause(i, { numero: e.target.value })
+                      }
+                      placeholder="Ej: QUINTA, 5, Art. 8"
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeReformaClause(i)}
+                    aria-label="Eliminar cláusula"
+                    className="mt-5 text-lg text-red-500 hover:text-red-700"
+                  >
+                    ×
+                  </button>
+                </div>
+                <label className="block text-[10px] uppercase text-slate-500">
+                  Texto nuevo de la cláusula
+                </label>
+                <textarea
+                  value={c.textoNuevo}
+                  onChange={(e) =>
+                    updateReformaClause(i, { textoNuevo: e.target.value })
+                  }
+                  rows={3}
+                  placeholder="Puedes describir el cambio en lenguaje simple; la IA redacta la cláusula final en estilo jurídico."
+                  className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={addReformaClause}
+            className="mt-2 text-xs font-medium text-indigo-600 hover:underline"
+          >
+            + Agregar cláusula
+          </button>
         </fieldset>
       )}
 

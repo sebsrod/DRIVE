@@ -297,27 +297,38 @@ function CategorySection({
           Aún no has subido modelos de esta categoría.
         </div>
       ) : (
-        <ul className="divide-y divide-slate-100">
-          {models.map((doc) => (
-            <li key={doc.id} className="flex items-center justify-between py-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-800">
-                  {doc.name}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {formatSize(doc.size)} ·{' '}
-                  {new Date(doc.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              <button
-                onClick={() => handleDelete(doc)}
-                className="ml-3 rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+        <details
+          className="rounded-lg border border-slate-200 bg-white"
+          open={models.length <= 4}
+        >
+          <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
+            Ver lista de {models.length} modelo{models.length === 1 ? '' : 's'}
+          </summary>
+          <ul className="divide-y divide-slate-100 border-t border-slate-100 px-3">
+            {models.map((doc) => (
+              <li
+                key={doc.id}
+                className="flex items-center justify-between py-2"
               >
-                Eliminar
-              </button>
-            </li>
-          ))}
-        </ul>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">
+                    {doc.name}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {formatSize(doc.size)} ·{' '}
+                    {new Date(doc.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDelete(doc)}
+                  className="ml-3 rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                >
+                  Eliminar
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {stylePreview && (
