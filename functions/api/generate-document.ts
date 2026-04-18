@@ -70,6 +70,12 @@ interface RequestBody {
   officeAddress: string
   attachments: Attachment[]
   writingStyle?: string | null
+  templates?: Array<{
+    act_key: string
+    act_label: string
+    template_text: string
+    placeholders: string[]
+  }>
 }
 
 interface Context {
@@ -694,14 +700,43 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
         '=== GUÍA DE ESTILO DEL ABOGADO ===',
         body.writingStyle.trim(),
         '=== FIN DE LA GUÍA DE ESTILO ===',
-        'IMPORTANTE: Adapta el documento al estilo descrito arriba, respetando las fórmulas, estructura y convenciones del abogado autor.',
       ].join('\n')
     : ''
 
+  // Plantillas literales extraídas de los modelos del usuario.
+  // Si existen, el modo de trabajo cambia: en vez de "genera libremente",
+  // Gemini debe ENSAMBLAR las plantillas y solo rellenar los placeholders.
+  const hasTemplates = (body.templates?.length ?? 0) > 0
+  const templatesSection = hasTemplates
+    ? [
+        '',
+        '=== PLANTILLAS LITERALES DEL USUARIO ===',
+        'A continuación tienes plantillas textuales extraídas de documentos reales del abogado. DEBES usar estas plantillas como la base del documento. NO reescribas, NO parafrasees — copia la redacción tal como aparece y SOLO reemplaza los placeholders ({{...}}) con los datos reales proporcionados en las secciones de datos del cliente y parámetros del documento.',
+        '',
+        ...(body.templates ?? []).map(
+          (t) =>
+            `--- ${t.act_label} (${t.act_key}) ---\n${t.template_text}\n--- fin ${t.act_key} ---`,
+        ),
+        '',
+        '=== FIN DE LAS PLANTILLAS ===',
+      ].join('\n')
+    : ''
+
+  const mainInstruction = hasTemplates
+    ? [
+        'Eres un abogado venezolano experto en redacción de documentos legales.',
+        'MODO PLANTILLA: El usuario tiene plantillas textuales literales extraídas de sus propios documentos. Tu tarea principal es ENSAMBLAR el documento usando esas plantillas tal como están escritas, sustituyendo SOLO los placeholders ({{...}}) por los datos reales del caso. Conserva absolutamente toda la redacción, fórmulas, vocabulario, estructura y puntuación de las plantillas.',
+        'Si alguna sección del documento NO tiene plantilla disponible, redáctala tú siguiendo el estilo de las plantillas existentes.',
+        'No uses markdown ni comentarios fuera del documento. Tu respuesta debe ser ÚNICAMENTE el texto del documento final.',
+      ].join('\n')
+    : [
+        'Eres un abogado venezolano experto en redacción de documentos legales.',
+        'Debes redactar un documento completo, formal, listo para imprimir, con estructura tradicional venezolana (encabezado, identificación de las partes, exposición, cláusulas numeradas, cierre, fecha y firma).',
+        'Usa lenguaje jurídico formal en español de Venezuela. No uses markdown ni comentarios fuera del documento. Tu respuesta debe ser ÚNICAMENTE el texto del documento.',
+      ].join('\n')
+
   return [
-    'Eres un abogado venezolano experto en redacción de documentos legales.',
-    'Debes redactar un documento completo, formal, listo para imprimir, con estructura tradicional venezolana (encabezado, identificación de las partes, exposición, cláusulas numeradas, cierre, fecha y firma).',
-    'Usa lenguaje jurídico formal en español de Venezuela. No uses markdown ni comentarios fuera del documento. Tu respuesta debe ser ÚNICAMENTE el texto del documento.',
+    mainInstruction,
     '',
     typeInstructions(documentType, params),
     '',
@@ -712,9 +747,12 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
     '=== DATOS DEL ABOGADO ===',
     authorLines,
     styleSection,
+    templatesSection,
     ocrSection,
     '',
-    'PRIORIDAD DE DATOS: Los datos estructurados del cliente (sección DATOS DEL CLIENTE y DATOS DE LA EMPRESA) son la fuente primaria y autoritativa. Úsalos textualmente. Solo recurre a los documentos anexos (PDFs y texto OCR) para completar información que NO esté en los datos estructurados.',
+    hasTemplates
+      ? 'PRIORIDAD: Usa las PLANTILLAS LITERALES como esqueleto del documento, sustituyendo los placeholders con los DATOS DEL CLIENTE. Si faltan datos para un placeholder, déjalo como {{placeholder}} para que el usuario lo complete. Los datos estructurados del cliente son la fuente autoritativa.'
+      : 'PRIORIDAD DE DATOS: Los datos estructurados del cliente (sección DATOS DEL CLIENTE y DATOS DE LA EMPRESA) son la fuente primaria y autoritativa. Úsalos textualmente. Solo recurre a los documentos anexos (PDFs y texto OCR) para completar información que NO esté en los datos estructurados.',
     extra,
   ].join('\n')
 }
