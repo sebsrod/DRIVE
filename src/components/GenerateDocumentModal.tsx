@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import Modal from './Modal'
 import {
+  ActTemplate,
   Client,
   DocumentRow,
   GeneratedAttachment,
@@ -8,12 +9,15 @@ import {
   downloadDocumentAsBase64,
   generateDocumentWithAI,
   getProfile,
+  listActTemplates,
   listFundamentalDocuments,
   saveGeneratedDocumentAsFile,
   styleCategoryForDocumentType,
 } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
 import { useAuth } from '../contexts/AuthContext'
+import DocumentPreviewModal from './DocumentPreviewModal'
+import ChatPanel from './ChatPanel'
 
 const COMMON_ASSEMBLY_ACTS = [
   'Aprobación de balances y estados financieros',
@@ -92,6 +96,7 @@ export default function GenerateDocumentModal({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
   const [savingFile, setSavingFile] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
 
   // Reset al abrir
@@ -176,6 +181,14 @@ export default function GenerateDocumentModal({
       const categoryStyle = author?.writing_styles?.[styleCategory]
       const writingStyle = categoryStyle || author?.writing_style || null
 
+      // Cargar plantillas extraídas de la categoría
+      let userTemplates: ActTemplate[] = []
+      try {
+        userTemplates = await listActTemplates(styleCategory)
+      } catch {
+        // No es crítico: si no hay templates se genera libremente
+      }
+
       const text = await generateDocumentWithAI({
         documentType,
         params: {
@@ -187,6 +200,7 @@ export default function GenerateDocumentModal({
         officeAddress: OFFICE_ADDRESS,
         attachments,
         writingStyle,
+        templates: userTemplates,
       })
       setResult(text)
     } catch (err) {
@@ -384,15 +398,47 @@ export default function GenerateDocumentModal({
             </button>
             <button
               type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700"
+            >
+              Ver con formato
+            </button>
+            <button
+              type="button"
               onClick={handleSaveAsFile}
               disabled={savingFile}
               className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
-              {savingFile ? 'Guardando…' : 'Guardar como archivo del cliente'}
+              {savingFile ? 'Guardando…' : 'Guardar como archivo'}
             </button>
           </div>
         </div>
       )}
+
+      {/* Chat interactivo con Gemini — siempre visible */}
+      <div className="mt-4">
+        <ChatPanel
+          systemContext={`Eres un asistente jurídico venezolano experto. El usuario está generando un documento de tipo "${
+            DOC_TYPES.find((d) => d.key === documentType)?.label ?? documentType
+          }" para el cliente "${client.name}"${
+            client.client_type === 'juridica'
+              ? ` (persona jurídica, RIF: ${client.cedula_rif ?? 'N/A'})`
+              : ''
+          }. ${
+            result
+              ? 'Ya se generó un borrador del documento. Puedes ayudar a revisarlo, corregirlo o completar datos faltantes.'
+              : 'Aún no se ha generado el documento. Puedes ayudar a aclarar datos necesarios antes de generarlo.'
+          } Responde siempre en español, de forma clara y concisa. Si detectas que falta información clave para el documento, pregunta específicamente por ella.`}
+          placeholder="Pregunta a la IA, pide correcciones o consulta datos faltantes…"
+        />
+      </div>
+
+      <DocumentPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        text={result}
+        client={client}
+      />
     </Modal>
   )
 }

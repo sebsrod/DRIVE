@@ -473,6 +473,7 @@ export interface GenerateDocumentInput {
   officeAddress: string
   attachments: GeneratedAttachment[]
   writingStyle?: string | null
+  templates?: ActTemplate[]
 }
 
 export async function generateDocumentWithAI(
@@ -516,6 +517,12 @@ export async function generateDocumentWithAI(
       officeAddress: input.officeAddress,
       attachments: input.attachments,
       writingStyle: input.writingStyle ?? null,
+      templates: (input.templates ?? []).map((t) => ({
+        act_key: t.act_key,
+        act_label: t.act_label,
+        template_text: t.template_text,
+        placeholders: t.placeholders,
+      })),
     }),
   })
   if (!res.ok) {
@@ -806,6 +813,86 @@ export async function analyzeStyleFromModels(
   }
   const data = (await res.json()) as { style: string }
   return data.style
+}
+
+// ---------- PLANTILLAS DE ACTOS ----------
+
+export interface ActTemplate {
+  id: string
+  owner_id: string
+  category: string
+  act_key: string
+  act_label: string
+  template_text: string
+  placeholders: string[]
+  created_at: string
+  updated_at: string
+}
+
+export async function listActTemplates(
+  category: string,
+): Promise<ActTemplate[]> {
+  const { data, error } = await supabase
+    .from('act_templates')
+    .select('*')
+    .eq('category', category)
+    .order('act_key', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as ActTemplate[]
+}
+
+export async function deleteActTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('act_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function updateActTemplateText(
+  id: string,
+  templateText: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('act_templates')
+    .update({ template_text: templateText, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function extractTemplatesFromModels(
+  models: ModelDocument[],
+  category: string,
+): Promise<{ count: number }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('No hay sesión activa.')
+
+  const attachments: GeneratedAttachment[] = []
+  for (const doc of models) {
+    const att = await downloadModelAsBase64(doc)
+    attachments.push(att)
+  }
+
+  const res = await fetch('/api/extract-templates', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ attachments, category }),
+  })
+  if (!res.ok) {
+    let err = `HTTP ${res.status}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) err = body.error
+    } catch {
+      // ignore
+    }
+    throw new Error(err)
+  }
+  const data = (await res.json()) as { count: number }
+  return data
 }
 
 export function formatSize(bytes: number | null): string {

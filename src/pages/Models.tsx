@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import {
+  ActTemplate,
   MODEL_CATEGORIES,
   ModelCategory,
   ModelDocument,
   analyzeStyleFromModels,
   deleteModelDocument,
+  extractTemplatesFromModels,
   formatSize,
   getProfile,
+  listActTemplates,
   listModelDocuments,
+  updateActTemplateText,
   uploadModelDocument,
 } from '../lib/api'
 
@@ -169,6 +173,63 @@ function CategorySection({
     total: number
   } | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [extracting, setExtracting] = useState(false)
+  const [templates, setTemplates] = useState<ActTemplate[]>([])
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
+
+  // Cargar templates al montar
+  useEffect(() => {
+    let alive = true
+    listActTemplates(category)
+      .then((ts) => {
+        if (alive) setTemplates(ts)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [category])
+
+  const refreshTemplates = async () => {
+    try {
+      const ts = await listActTemplates(category)
+      setTemplates(ts)
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleExtract = async () => {
+    if (models.length === 0) return
+    try {
+      setExtracting(true)
+      setError(null)
+      setInfo(null)
+      const result = await extractTemplatesFromModels(models, category)
+      await refreshTemplates()
+      setInfo(
+        `Se extrajeron ${result.count} plantilla(s) de "${label}". Revísalas abajo y edítalas si es necesario.`,
+      )
+      setTimeout(() => setInfo(null), 6000)
+    } catch (err) {
+      setError(`Error al extraer plantillas de "${label}": ` + (err as Error).message)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const handleSaveTemplate = async (t: ActTemplate) => {
+    try {
+      await updateActTemplateText(t.id, editText)
+      setEditingTemplate(null)
+      await refreshTemplates()
+      setInfo('Plantilla guardada.')
+      setTimeout(() => setInfo(null), 2000)
+    } catch (err) {
+      setError('Error guardando: ' + (err as Error).message)
+    }
+  }
 
   const atCap = models.length >= MAX_MODELS_PER_CATEGORY
 
@@ -287,7 +348,14 @@ function CategorySection({
             disabled={analyzing || models.length === 0}
             className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
           >
-            {analyzing ? 'Analizando…' : '✨ Analizar'}
+            {analyzing ? 'Analizando…' : '✨ Estilo'}
+          </button>
+          <button
+            onClick={handleExtract}
+            disabled={extracting || models.length === 0}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {extracting ? 'Extrayendo…' : '📋 Plantillas'}
           </button>
         </div>
       </div>
@@ -339,6 +407,91 @@ function CategorySection({
           <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-line text-xs leading-relaxed text-slate-700">
             {stylePreview}
           </div>
+        </details>
+      )}
+
+      {templates.length > 0 && (
+        <details className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <summary className="cursor-pointer text-xs font-medium text-emerald-800">
+            📋 Plantillas extraídas ({templates.length})
+          </summary>
+          <p className="mt-2 text-[11px] text-emerald-700">
+            Estas plantillas se usan al generar documentos. Puedes editarlas
+            para ajustar la redacción. Los placeholders
+            (&#123;&#123;nombre&#125;&#125;) se reemplazan con datos reales.
+          </p>
+          <ul className="mt-2 space-y-3">
+            {templates.map((t) => (
+              <li
+                key={t.id}
+                className="rounded-lg border border-emerald-100 bg-white p-3"
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-800">
+                    {t.act_label}
+                  </p>
+                  {editingTemplate === t.id ? (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveTemplate(t)}
+                        className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-700"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingTemplate(null)}
+                        className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-300"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTemplate(t.id)
+                        setEditText(t.template_text)
+                      }}
+                      className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-200"
+                    >
+                      Editar
+                    </button>
+                  )}
+                </div>
+                {t.placeholders.length > 0 && (
+                  <div className="mb-1 flex flex-wrap gap-1">
+                    {t.placeholders.map((ph) => (
+                      <span
+                        key={ph}
+                        className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-mono text-emerald-800"
+                      >
+                        {`{{${ph}}}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {editingTemplate === t.id ? (
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={10}
+                    className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-[11px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                ) : (
+                  <div className="max-h-32 overflow-y-auto whitespace-pre-line text-[11px] leading-relaxed text-slate-700">
+                    {t.template_text.slice(0, 500)}
+                    {t.template_text.length > 500 && (
+                      <span className="text-slate-400">
+                        … (pulsa Editar para ver completo)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         </details>
       )}
     </section>
