@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import {
+  MODEL_CATEGORIES,
+  ModelCategory,
   ModelDocument,
   analyzeStyleFromModels,
   deleteModelDocument,
@@ -10,20 +12,14 @@ import {
   uploadModelDocument,
 } from '../lib/api'
 
-const MAX_MODELS = 25
+const MAX_MODELS_PER_CATEGORY = 25
 
 export default function Models() {
   const { user } = useAuth()
-  const inputRef = useRef<HTMLInputElement>(null)
   const [models, setModels] = useState<ModelDocument[]>([])
+  const [writingStyles, setWritingStyles] = useState<Record<string, string>>({})
+  const [legacyStyle, setLegacyStyle] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<{
-    current: number
-    total: number
-  } | null>(null)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [stylePreview, setStylePreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
 
@@ -36,7 +32,8 @@ export default function Models() {
         getProfile(user.id),
       ])
       setModels(docs)
-      setStylePreview(profile?.writing_style ?? null)
+      setWritingStyles(profile?.writing_styles ?? {})
+      setLegacyStyle(profile?.writing_style ?? null)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
@@ -49,16 +46,140 @@ export default function Models() {
     refresh()
   }, [refresh])
 
+  // Agrupar modelos por categoría
+  const modelsByCategory = useMemo(() => {
+    const groups: Record<string, ModelDocument[]> = {}
+    for (const cat of MODEL_CATEGORIES) groups[cat.key] = []
+    const uncategorized: ModelDocument[] = []
+    for (const m of models) {
+      if (m.category && groups[m.category]) {
+        groups[m.category].push(m)
+      } else {
+        uncategorized.push(m)
+      }
+    }
+    return { groups, uncategorized }
+  }, [models])
+
+  if (!user) return null
+
+  const hasLegacy =
+    legacyStyle && Object.keys(writingStyles).length === 0
+
+  return (
+    <div className="max-w-3xl">
+      <h2 className="mb-1 text-2xl font-bold text-slate-900">Modelos</h2>
+      <p className="mb-6 text-sm text-slate-500">
+        Sube ejemplos de documentos que hayas redactado en cada categoría.
+        La IA analizará cada categoría por separado y usará el estilo
+        correspondiente al tipo de documento que estés generando.
+      </p>
+
+      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {info && <p className="mb-4 text-sm text-green-600">{info}</p>}
+
+      {hasLegacy && (
+        <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">
+            Tienes una guía de estilo antigua sin categorizar. Analiza tus
+            modelos por categoría abajo para reemplazarla. Hasta entonces, la
+            guía legacy se usará como respaldo cuando una categoría no tenga
+            análisis propio.
+          </p>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-slate-500">Cargando…</p>
+      ) : (
+        <div className="space-y-6">
+          {MODEL_CATEGORIES.map((cat) => (
+            <CategorySection
+              key={cat.key}
+              category={cat.key}
+              label={cat.label}
+              description={cat.description}
+              models={modelsByCategory.groups[cat.key] ?? []}
+              stylePreview={writingStyles[cat.key] ?? null}
+              onChange={refresh}
+              setError={setError}
+              setInfo={setInfo}
+              userId={user.id}
+            />
+          ))}
+
+          {modelsByCategory.uncategorized.length > 0 && (
+            <section className="rounded-lg border border-slate-300 bg-slate-50 p-5">
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
+                Sin clasificar ({modelsByCategory.uncategorized.length})
+              </h3>
+              <p className="mb-3 text-xs text-slate-500">
+                Estos modelos fueron subidos antes de activar las categorías.
+                Elimínalos y vuelve a subirlos en la categoría correcta.
+              </p>
+              <ul className="divide-y divide-slate-200">
+                {modelsByCategory.uncategorized.map((doc) => (
+                  <UncategorizedRow
+                    key={doc.id}
+                    doc={doc}
+                    onChange={refresh}
+                    setError={setError}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// =========================================================
+// Sección por categoría
+// =========================================================
+
+interface CategorySectionProps {
+  category: ModelCategory
+  label: string
+  description: string
+  models: ModelDocument[]
+  stylePreview: string | null
+  onChange: () => Promise<void>
+  setError: (msg: string | null) => void
+  setInfo: (msg: string | null) => void
+  userId: string
+}
+
+function CategorySection({
+  category,
+  label,
+  description,
+  models,
+  stylePreview,
+  onChange,
+  setError,
+  setInfo,
+  userId,
+}: CategorySectionProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number
+    total: number
+  } | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+
+  const atCap = models.length >= MAX_MODELS_PER_CATEGORY
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (!files?.length || !user) return
-    // eslint-disable-next-line no-console
-    console.log(`[Modelos] Seleccionados ${files.length} archivo(s)`)
+    if (!files?.length) return
 
-    const available = MAX_MODELS - models.length
+    const available = MAX_MODELS_PER_CATEGORY - models.length
     if (available <= 0) {
       setError(
-        `Has alcanzado el máximo de ${MAX_MODELS} modelos. Elimina alguno antes de subir nuevos.`,
+        `Has alcanzado el máximo de ${MAX_MODELS_PER_CATEGORY} modelos en "${label}". Elimina alguno antes de subir nuevos.`,
       )
       if (inputRef.current) inputRef.current.value = ''
       return
@@ -76,20 +197,20 @@ export default function Models() {
         const file = toUpload[i]
         setUploadProgress({ current: i + 1, total: toUpload.length })
         try {
-          await uploadModelDocument(file, user.id)
+          await uploadModelDocument(file, userId, category)
         } catch (err) {
           const msg = (err as Error).message
           // eslint-disable-next-line no-console
-          console.error(`[Modelos] Falló "${file.name}":`, err)
+          console.error(`[Modelos:${category}] Falló "${file.name}":`, err)
           failed.push(`${file.name}: ${msg}`)
         }
       }
-      await refresh()
+      await onChange()
 
       const msgs: string[] = []
       if (skipped > 0) {
         msgs.push(
-          `${skipped} archivo(s) no se subieron porque superarían el máximo de ${MAX_MODELS}.`,
+          `${skipped} archivo(s) no se subieron por el cupo de ${MAX_MODELS_PER_CATEGORY}.`,
         )
       }
       if (failed.length > 0) {
@@ -107,146 +228,143 @@ export default function Models() {
     if (!confirm(`¿Eliminar "${doc.name}"?`)) return
     try {
       await deleteModelDocument(doc)
-      await refresh()
+      await onChange()
     } catch (err) {
       setError('Error al eliminar: ' + (err as Error).message)
     }
   }
 
   const handleAnalyze = async () => {
-    if (!user || models.length === 0) return
+    if (models.length === 0) return
     try {
       setAnalyzing(true)
       setError(null)
       setInfo(null)
-      const style = await analyzeStyleFromModels(models)
-      setStylePreview(style)
-      setInfo(
-        'Estilo analizado correctamente. Se usará automáticamente en la generación de documentos.',
-      )
-      setTimeout(() => setInfo(null), 5000)
+      await analyzeStyleFromModels(models, category)
+      await onChange()
+      setInfo(`Estilo de "${label}" analizado correctamente.`)
+      setTimeout(() => setInfo(null), 4000)
     } catch (err) {
-      setError('Error al analizar: ' + (err as Error).message)
+      setError(`Error al analizar "${label}": ` + (err as Error).message)
     } finally {
       setAnalyzing(false)
     }
   }
 
-  if (!user) return null
-
   return (
-    <div className="max-w-3xl">
-      <h2 className="mb-1 text-2xl font-bold text-slate-900">Modelos</h2>
-      <p className="mb-6 text-sm text-slate-500">
-        Sube documentos de ejemplo (PDFs) para que la IA aprenda tu estilo de
-        redacción y pueda emularlo al generar nuevos documentos.
-      </p>
-
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-      {info && <p className="mb-4 text-sm text-green-600">{info}</p>}
-
-      <section className="mb-6 rounded-lg border border-slate-200 bg-white p-5">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Documentos modelo
-            </h3>
-            <p className="text-xs text-slate-400">
-              {models.length} / {MAX_MODELS} modelos subidos
-            </p>
-          </div>
-          <div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf"
-              multiple
-              className="hidden"
-              onChange={handleUpload}
-            />
-            <button
-              onClick={() => inputRef.current?.click()}
-              disabled={uploading || models.length >= MAX_MODELS}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-              title={
-                models.length >= MAX_MODELS
-                  ? `Máximo ${MAX_MODELS} modelos`
-                  : undefined
-              }
-            >
-              {uploading
-                ? uploadProgress
-                  ? `Subiendo ${uploadProgress.current} de ${uploadProgress.total}…`
-                  : 'Subiendo…'
-                : '+ Subir modelos (PDF)'}
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <p className="text-slate-500">Cargando…</p>
-        ) : models.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            Aún no has subido documentos modelo. Sube poderes, contratos o actas
-            que hayas redactado anteriormente para que la IA analice tu estilo.
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {models.map((doc) => (
-              <li
-                key={doc.id}
-                className="flex items-center justify-between py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">
-                    {doc.name}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {formatSize(doc.size)} ·{' '}
-                    {new Date(doc.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDelete(doc)}
-                  className="ml-3 rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
-                >
-                  Eliminar
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mb-6">
-        <button
-          onClick={handleAnalyze}
-          disabled={analyzing || models.length === 0}
-          className="w-full rounded-lg bg-purple-600 px-4 py-3 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50 sm:w-auto"
-        >
-          {analyzing ? 'Analizando con IA…' : '✨ Analizar modelos'}
-        </button>
-        {models.length === 0 && (
-          <p className="mt-2 text-xs text-slate-400">
-            Sube al menos un documento modelo antes de analizar.
+    <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-slate-900">{label}</h3>
+          <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {models.length} / {MAX_MODELS_PER_CATEGORY} modelos ·{' '}
+            {stylePreview ? 'Estilo analizado ✅' : 'Sin analizar'}
           </p>
-        )}
-      </section>
+        </div>
+        <div className="flex flex-shrink-0 gap-2">
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf"
+            multiple
+            className="hidden"
+            onChange={handleUpload}
+          />
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading || atCap}
+            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {uploading
+              ? uploadProgress
+                ? `${uploadProgress.current}/${uploadProgress.total}`
+                : 'Subiendo…'
+              : '+ Subir PDFs'}
+          </button>
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing || models.length === 0}
+            className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {analyzing ? 'Analizando…' : '✨ Analizar'}
+          </button>
+        </div>
+      </div>
+
+      {models.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+          Aún no has subido modelos de esta categoría.
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {models.map((doc) => (
+            <li key={doc.id} className="flex items-center justify-between py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-800">
+                  {doc.name}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {formatSize(doc.size)} ·{' '}
+                  {new Date(doc.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                onClick={() => handleDelete(doc)}
+                className="ml-3 rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+              >
+                Eliminar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {stylePreview && (
-        <section className="rounded-lg border border-slate-200 bg-white p-5">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Guía de estilo extraída
-          </h3>
-          <p className="mb-3 text-xs text-slate-500">
-            Esta guía se incluirá automáticamente como instrucción cuando generes
-            cualquier documento. Puedes re-analizarla cuando añadas nuevos modelos.
-          </p>
-          <div className="max-h-80 overflow-y-auto rounded-lg bg-slate-50 p-4 text-xs leading-relaxed text-slate-700 whitespace-pre-line">
+        <details className="mt-4 rounded-lg bg-slate-50 p-3">
+          <summary className="cursor-pointer text-xs font-medium text-slate-600">
+            Ver guía de estilo extraída
+          </summary>
+          <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-line text-xs leading-relaxed text-slate-700">
             {stylePreview}
           </div>
-        </section>
+        </details>
       )}
-    </div>
+    </section>
+  )
+}
+
+// =========================================================
+// Fila para modelos sin categoría (legacy)
+// =========================================================
+
+function UncategorizedRow({
+  doc,
+  onChange,
+  setError,
+}: {
+  doc: ModelDocument
+  onChange: () => Promise<void>
+  setError: (msg: string | null) => void
+}) {
+  const handleDelete = async () => {
+    if (!confirm(`¿Eliminar "${doc.name}"?`)) return
+    try {
+      await deleteModelDocument(doc)
+      await onChange()
+    } catch (err) {
+      setError('Error al eliminar: ' + (err as Error).message)
+    }
+  }
+  return (
+    <li className="flex items-center justify-between py-2">
+      <p className="min-w-0 flex-1 truncate text-sm text-slate-700">{doc.name}</p>
+      <button
+        onClick={handleDelete}
+        className="ml-3 rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+      >
+        Eliminar
+      </button>
+    </li>
   )
 }

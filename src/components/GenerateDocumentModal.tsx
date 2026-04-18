@@ -10,6 +10,7 @@ import {
   getProfile,
   listFundamentalDocuments,
   saveGeneratedDocumentAsFile,
+  styleCategoryForDocumentType,
 } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
 import { useAuth } from '../contexts/AuthContext'
@@ -157,6 +158,13 @@ export default function GenerateDocumentModal({
       // Perfil del autor (para los datos del abogado)
       const author: Profile | null = await getProfile(user.id).catch(() => null)
 
+      // Seleccionar la guía de estilo específica de la categoría que
+      // corresponde al tipo de documento. Si no hay guía por categoría
+      // caemos al writing_style legacy.
+      const styleCategory = styleCategoryForDocumentType(documentType)
+      const categoryStyle = author?.writing_styles?.[styleCategory]
+      const writingStyle = categoryStyle || author?.writing_style || null
+
       const text = await generateDocumentWithAI({
         documentType,
         params: {
@@ -167,7 +175,7 @@ export default function GenerateDocumentModal({
         author,
         officeAddress: OFFICE_ADDRESS,
         attachments,
-        writingStyle: author?.writing_style ?? null,
+        writingStyle,
       })
       setResult(text)
     } catch (err) {
