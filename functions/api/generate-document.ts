@@ -523,7 +523,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
     const keys = Object.keys(env).filter((k) => !k.startsWith('__')).join(', ')
     return json(
       {
-        error: `GEMINI_API_KEY no está configurada. Variables disponibles: [${keys || 'ninguna'}]. Verifica el nombre exacto en Cloudflare → Settings → Variables and Secrets.`,
+        error: `[v2] GEMINI_API_KEY no está configurada. Variables disponibles: [${keys || 'ninguna'}]. Verifica el nombre exacto en Cloudflare → Settings → Variables and Secrets.`,
       },
       500,
     )
