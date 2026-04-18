@@ -19,8 +19,22 @@ interface Attachment {
   base64: string
 }
 
+type ModelCategory =
+  | 'documento_constitutivo'
+  | 'acta_asamblea'
+  | 'poder'
+  | 'contrato'
+
 interface RequestBody {
   attachments: Attachment[]
+  category?: ModelCategory
+}
+
+const CATEGORY_LABELS: Record<ModelCategory, string> = {
+  documento_constitutivo: 'Documentos Constitutivos (estatutos sociales)',
+  acta_asamblea: 'Actas de Asamblea',
+  poder: 'Poderes',
+  contrato: 'Contratos (arrendamiento, laboral, comerciales)',
 }
 
 interface Context {
@@ -88,20 +102,33 @@ async function callGemini(
   return text
 }
 
-const STYLE_PROMPT = `Eres un experto en análisis de estilo de redacción jurídica venezolana.
+function stylePrompt(category?: ModelCategory): string {
+  const categoryLabel = category ? CATEGORY_LABELS[category] : 'documentos jurídicos'
+  return `Eres un experto en análisis de estilo de redacción jurídica venezolana.
 
-Analiza cuidadosamente todos los documentos adjuntos y extrae una guía de estilo detallada y concisa que cubra:
+Los documentos adjuntos son todos de la categoría: **${categoryLabel}**.
+
+Analiza cuidadosamente el estilo DEL AUTOR en esos documentos y extrae una guía detallada y concisa que cubra:
 
 1. **Estructura general**: cómo organiza el documento (encabezado, identificación de partes, exposición, cláusulas, cierre y firma).
-2. **Vocabulario jurídico preferido**: expresiones y fórmulas legales recurrentes (ej: "comparece por ante mí", "se deja constancia", "por voluntad de las partes").
+2. **Vocabulario jurídico preferido**: expresiones y fórmulas legales recurrentes que usa el autor (ej: "comparece por ante mí", "se deja constancia", "por voluntad de las partes").
 3. **Formato de cláusulas**: numeración (PRIMERA, SEGUNDA vs 1., 2.), longitud típica, estilo (narrativo vs enumerativo).
-4. **Identificación de las partes**: cómo refiere al otorgante, apoderado, contratante (nombre completo, cédula, domicilio — formato exacto).
+4. **Identificación de las partes**: cómo refiere a otorgantes, apoderados, accionistas, representantes (nombre completo, cédula, domicilio, estado civil — formato exacto).
 5. **Formato de datos**: cómo escribe fechas, montos en letras y números, referencias a registros mercantiles.
 6. **Tono y formalidad**: nivel de solemnidad, uso de tercera persona, tiempo verbal predominante.
-7. **Patrones de cierre**: despedida, declaración de conformidad, fórmula de firma.
-8. **Actos de asamblea comunes identificados**: lista los tipos de actos societarios que aparecen en los documentos (si hay actas).
+7. **Patrones de cierre**: despedida, declaración de conformidad, autorización al presentante, fórmula de firma.
+${
+  category === 'acta_asamblea'
+    ? '8. **Patrones específicos de asamblea**: formato de convocatoria, indicación de quórum, tipo de votación, presidencia/secretaría, lectura del acta.\n9. **Actos más comunes encontrados**: lista los tipos de actos societarios que aparecen.'
+    : category === 'documento_constitutivo'
+      ? '8. **Organización estatutaria**: orden típico de cláusulas (denominación, domicilio, objeto, duración, capital, administración, comisario, asambleas, ejercicio económico, disolución).'
+      : category === 'poder'
+        ? '8. **Patrones de otorgamiento**: fórmula de comparecencia, enunciación de facultades, limitaciones, revocación.'
+        : '8. **Patrones específicos del tipo de contrato**: identificación de las partes, cláusulas estandarizadas y orden en que aparecen.'
+}
 
-Esta guía será usada como instrucción para generar nuevos documentos que emulen fielmente el estilo del usuario. Sé preciso y completo pero conciso. No incluyas el contenido de los documentos, solo el análisis del estilo.`
+Esta guía será usada como instrucción al generar nuevos documentos de esta misma categoría que deben emular fielmente el estilo del usuario. Sé preciso y completo pero conciso. No incluyas el contenido de los documentos, solo el análisis del estilo.`
+}
 
 export async function onRequestPost(context: Context): Promise<Response> {
   const { request, env } = context
@@ -133,10 +160,12 @@ export async function onRequestPost(context: Context): Promise<Response> {
   }
 
   const proModel = env.GEMINI_PRO_MODEL || 'gemini-2.5-pro'
+  const category = body.category
 
   try {
-    // Enviar todos los PDFs al modelo Pro para análisis de estilo
-    const parts: unknown[] = [{ text: STYLE_PROMPT }]
+    // Enviar todos los PDFs al modelo Pro para análisis de estilo.
+    // El prompt se adapta a la categoría recibida.
+    const parts: unknown[] = [{ text: stylePrompt(category) }]
     for (const att of body.attachments) {
       if (!att?.base64 || !att?.mimeType) continue
       parts.push({
@@ -146,7 +175,31 @@ export async function onRequestPost(context: Context): Promise<Response> {
 
     const styleGuide = await callGemini(proModel, env.GEMINI_API_KEY, parts, 0.3)
 
-    // Guardar la guía de estilo en el perfil del usuario vía Supabase
+    // Guardar la guía en el perfil. Si llegó categoría, la guardamos
+    // dentro de writing_styles (jsonb) bajo esa clave. Si no, caemos
+    // al legacy writing_style (text).
+    let patchBody: Record<string, unknown>
+    if (category) {
+      // Obtener el objeto writing_styles actual y hacer merge
+      const fetchRes = await fetch(
+        `${env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.userId}&select=writing_styles`,
+        {
+          headers: {
+            apikey: env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${auth.token}`,
+          },
+        },
+      )
+      const currentStyles =
+        ((await fetchRes.json().catch(() => [])) as Array<{
+          writing_styles?: Record<string, string>
+        }>)[0]?.writing_styles ?? {}
+      const merged = { ...currentStyles, [category]: styleGuide }
+      patchBody = { writing_styles: merged }
+    } else {
+      patchBody = { writing_style: styleGuide }
+    }
+
     const saveRes = await fetch(
       `${env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.userId}`,
       {
@@ -157,7 +210,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
           Authorization: `Bearer ${auth.token}`,
           Prefer: 'return=minimal',
         },
-        body: JSON.stringify({ writing_style: styleGuide }),
+        body: JSON.stringify(patchBody),
       },
     )
     if (!saveRes.ok) {
@@ -165,7 +218,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
       throw new Error(`Error guardando estilo en perfil: ${saveRes.status} ${errText}`)
     }
 
-    return json({ style: styleGuide })
+    return json({ style: styleGuide, category: category ?? null })
   } catch (err) {
     return json({ error: (err as Error).message }, 500)
   }

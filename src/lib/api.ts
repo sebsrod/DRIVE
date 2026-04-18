@@ -23,9 +23,47 @@ export interface Profile {
   phone: string | null
   ipsa_number: string | null
   writing_style: string | null
+  writing_styles: Record<string, string>
   role: 'member' | 'admin'
   created_at: string
 }
+
+export type ModelCategory =
+  | 'documento_constitutivo'
+  | 'acta_asamblea'
+  | 'poder'
+  | 'contrato'
+
+export const MODEL_CATEGORIES: {
+  key: ModelCategory
+  label: string
+  description: string
+}[] = [
+  {
+    key: 'documento_constitutivo',
+    label: 'Documentos Constitutivos',
+    description:
+      'Sube ejemplos de documentos constitutivos y estatutos sociales que hayas redactado.',
+  },
+  {
+    key: 'acta_asamblea',
+    label: 'Actas de Asamblea',
+    description:
+      'Sube actas de asamblea (ordinarias y extraordinarias) de tu despacho.',
+  },
+  {
+    key: 'poder',
+    label: 'Poderes',
+    description:
+      'Sube poderes generales y especiales que hayas redactado.',
+  },
+  {
+    key: 'contrato',
+    label: 'Contratos',
+    description:
+      'Sube contratos de arrendamiento, laborales y otros contratos mercantiles.',
+  },
+]
 
 export interface ModelDocument {
   id: string
@@ -34,7 +72,29 @@ export interface ModelDocument {
   storage_path: string
   size: number | null
   mime_type: string | null
+  category: ModelCategory | string | null
   created_at: string
+}
+
+// Devuelve la categoría de estilo a usar al generar un documento
+// según su tipo. Si la guía de esa categoría está vacía, el caller
+// debe caer al writing_style legacy.
+export function styleCategoryForDocumentType(
+  documentType: string,
+): ModelCategory {
+  switch (documentType) {
+    case 'documento_constitutivo':
+      return 'documento_constitutivo'
+    case 'acta_asamblea':
+      return 'acta_asamblea'
+    case 'poder':
+      return 'poder'
+    case 'arrendamiento':
+    case 'laboral':
+      return 'contrato'
+    default:
+      return 'contrato'
+  }
 }
 
 export interface Client {
@@ -656,11 +716,12 @@ export async function listModelDocuments(userId: string): Promise<ModelDocument[
 export async function uploadModelDocument(
   file: File,
   userId: string,
+  category: ModelCategory,
 ): Promise<ModelDocument> {
   // Un sufijo aleatorio evita colisiones cuando se suben varios
   // archivos en el mismo milisegundo (Date.now() puede repetir valor).
   const rand = Math.random().toString(36).slice(2, 10)
-  const path = `${userId}/_models/${Date.now()}-${rand}-${sanitizeFilename(file.name)}`
+  const path = `${userId}/_models/${category}/${Date.now()}-${rand}-${sanitizeFilename(file.name)}`
   const { error: uploadError } = await supabase.storage
     .from(PERSONAL_BUCKET)
     .upload(path, file, { upsert: false })
@@ -674,6 +735,7 @@ export async function uploadModelDocument(
       storage_path: path,
       size: file.size,
       mime_type: file.type,
+      category,
     })
     .select()
     .single()
@@ -710,6 +772,7 @@ export async function downloadModelAsBase64(
 
 export async function analyzeStyleFromModels(
   models: ModelDocument[],
+  category: ModelCategory,
 ): Promise<string> {
   const {
     data: { session },
@@ -729,7 +792,7 @@ export async function analyzeStyleFromModels(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ attachments }),
+    body: JSON.stringify({ attachments, category }),
   })
   if (!res.ok) {
     let err = `HTTP ${res.status}`
