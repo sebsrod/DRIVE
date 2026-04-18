@@ -520,10 +520,10 @@ export async function onRequestPost(context: Context): Promise<Response> {
   const { request, env } = context
 
   if (!env.GEMINI_API_KEY) {
+    const keys = Object.keys(env).filter((k) => !k.startsWith('__')).join(', ')
     return json(
       {
-        error:
-          'GEMINI_API_KEY no está configurada en las variables de entorno de Cloudflare Pages.',
+        error: `GEMINI_API_KEY no está configurada. Variables disponibles: [${keys || 'ninguna'}]. Verifica el nombre exacto en Cloudflare → Settings → Variables and Secrets.`,
       },
       500,
     )
