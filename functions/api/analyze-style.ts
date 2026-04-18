@@ -110,7 +110,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
     const keys = Object.keys(env).filter((k) => !k.startsWith('__')).join(', ')
     return json(
       {
-        error: `[v2] GEMINI_API_KEY no está configurada. Variables disponibles: [${keys || 'ninguna'}]. Verifica que el nombre sea exacto en Cloudflare → Settings → Variables and Secrets para Production.`,
+        error: `GEMINI_API_KEY no está configurada (o su valor está vacío). Variables disponibles en runtime: [${keys || 'ninguna'}]. Verifica el valor en Cloudflare → Settings → Variables and Secrets para Production.`,
       },
       500,
     )
@@ -132,7 +132,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
     return json({ error: 'No se enviaron documentos modelo.' }, 400)
   }
 
-  const proModel = env.GEMINI_PRO_MODEL || 'gemini-3.1-pro'
+  const proModel = env.GEMINI_PRO_MODEL || 'gemini-2.5-pro'
 
   try {
     // Enviar todos los PDFs al modelo Pro para análisis de estilo
