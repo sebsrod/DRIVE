@@ -14,8 +14,10 @@ body {
 
 @media print {
   /* -------- Reset de página -------- */
+  /* -------- Reset de página --------
+     8.5 x 13 pulgadas = tamaño oficio/legal venezolano (folio). */
   @page {
-    size: auto;
+    size: 8.5in 13in;
     margin: 0;
   }
 
