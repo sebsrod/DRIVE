@@ -58,6 +58,7 @@ interface RequestBody {
     registry_number?: string | null
     registry_volume?: string | null
     board_duration?: string | null
+    total_shares?: number | null
     shareholders?: Shareholder[]
     legal_representatives?: LegalRepresentative[]
   }
@@ -83,7 +84,7 @@ interface Context {
   env: Env
 }
 
-const DEFAULT_PRO_MODEL = 'gemini-2.5-pro'
+const DEFAULT_PRO_MODEL = 'gemini-3.1-pro-preview'
 const DEFAULT_FLASH_MODEL = 'gemini-2.5-flash'
 
 function json(body: unknown, status = 200): Response {
@@ -275,7 +276,11 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       if (s('notaryPresenter')) {
         cLines.push('')
         cLines.push(
-          `Persona autorizada para presentar el documento ante el Registro Mercantil: ${s('notaryPresenter')}`,
+          `Persona autorizada para presentar el documento ante el Registro Mercantil: ${s('notaryPresenter')}${
+            s('notaryPresenterCedula')
+              ? `, C.I. ${s('notaryPresenterCedula')}`
+              : ''
+          }`,
         )
       }
 
@@ -325,6 +330,7 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       )
       const disolucionFacultades = parseArray<string>(p.disolucionFacultades)
       const attendingIdxs = parseArray<number>(p.attendingIdxs)
+      const balanceYears = parseArray<number>(p.balanceYears)
 
       // Formatea "Nombre|Cédula" → "Nombre (C.I. Cédula)"
       const parsePerson = (raw: string) => {
@@ -357,11 +363,6 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       if (s('assemblyPresident')) {
         lines.push(
           `Presidente de la asamblea: ${parsePerson(s('assemblyPresident'))}`,
-        )
-      }
-      if (s('assemblySecretary')) {
-        lines.push(
-          `Secretario de la asamblea: ${parsePerson(s('assemblySecretary'))}`,
         )
       }
 
@@ -433,6 +434,25 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
           lines.push(`  - Colegio en el que está inscrito: ${s('comisarioColegio')}`)
         if (s('comisarioCarnet'))
           lines.push(`  - N° de carnet: ${s('comisarioCarnet')}`)
+      }
+
+      // ---------- Aprobación de balances ----------
+      if (
+        balanceYears.length > 0 ||
+        selectedActs.includes('Aprobación de balances y estados financieros')
+      ) {
+        lines.push('')
+        if (balanceYears.length > 0) {
+          lines.push(
+            `Aprobación de balances y estados financieros — ejercicio(s) económico(s) a aprobar: ${balanceYears
+              .sort()
+              .join(', ')}`,
+          )
+        } else {
+          lines.push(
+            'Aprobación de balances y estados financieros — el usuario no especificó los años; redacta el punto pidiendo que el usuario complete los ejercicios.',
+          )
+        }
       }
 
       // ---------- Aumento de capital ----------
@@ -582,13 +602,17 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       if (s('notaryPresenter')) {
         lines.push('')
         lines.push(
-          `Persona que participa el acta (firma al inicio y se autoriza al final para presentar ante el Registro Mercantil): ${s('notaryPresenter')}`,
+          `Persona que participa el acta (firma al inicio y se autoriza al final para presentar ante el Registro Mercantil): ${s('notaryPresenter')}${
+            s('notaryPresenterCedula')
+              ? `, C.I. ${s('notaryPresenterCedula')}`
+              : ''
+          }`,
         )
       }
 
       lines.push('')
       lines.push(
-        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Estructura sugerida: (1) encabezado con fecha completa en letras, hora, lugar e identificación de la sociedad incluyendo datos de registro; (2) indicación del tipo de convocatoria y, si aplica, el texto de la misma; (3) verificación de quórum con la lista de accionistas presentes y el porcentaje total representado; (4) designación de presidente y secretario de la asamblea; (5) desarrollo de la asamblea con discusión de cada punto del orden del día y las decisiones adoptadas (usa los datos estructurados exactos de cada acto); (6) modalidad de votación; (7) lectura y aprobación del acta si corresponde; (8) cierre y firma de los asistentes; (9) cláusula final de autorización al presentante para la inscripción ante el Registro Mercantil. Usa estilo formal notarial venezolano.',
+        'Redacta un Acta de Asamblea de Accionistas/Socios según el Código de Comercio venezolano. Estructura sugerida: (1) encabezado con fecha completa en letras, hora, lugar e identificación de la sociedad incluyendo datos de registro; (2) indicación del tipo de convocatoria y, si aplica, el texto de la misma; (3) verificación de quórum con la lista de accionistas presentes y el porcentaje total representado; (4) designación del presidente de la asamblea; (5) desarrollo de la asamblea con discusión de cada punto del orden del día y las decisiones adoptadas (usa los datos estructurados exactos de cada acto); (6) modalidad de votación; (7) lectura y aprobación del acta si corresponde; (8) cierre y firma de los asistentes; (9) cláusula final de autorización al presentante para la inscripción ante el Registro Mercantil. Usa estilo formal notarial venezolano.',
       )
       return lines.filter((l) => l.length > 0).join('\n')
     }
@@ -629,6 +653,9 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
           }`
         : null,
       client.capital_social ? `Capital social: ${client.capital_social}` : null,
+      client.total_shares != null
+        ? `Cantidad total de acciones: ${client.total_shares}`
+        : null,
       client.board_duration
         ? `Duración de la Junta Directiva: ${client.board_duration}`
         : null,
@@ -636,14 +663,20 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
 
     const shareholders = client.shareholders ?? []
     const reps = client.legal_representatives ?? []
+    const totalSh = Number(client.total_shares ?? 0)
 
     const shareholdersLines = shareholders.length
       ? [
           'Accionistas:',
-          ...shareholders.map(
-            (s) =>
-              `  - ${s.name}${s.cedula ? ` (C.I./RIF ${s.cedula})` : ''} — ${s.percentage}%`,
-          ),
+          ...shareholders.map((s) => {
+            const sharesCount =
+              totalSh > 0
+                ? Math.round((Number(s.percentage) / 100) * totalSh)
+                : null
+            return `  - ${s.name}${s.cedula ? ` (C.I./RIF ${s.cedula})` : ''} — ${s.percentage}%${
+              sharesCount != null ? ` (${sharesCount} acciones)` : ''
+            }`
+          }),
         ]
       : []
 
@@ -725,9 +758,18 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
   const mainInstruction = hasTemplates
     ? [
         'Eres un abogado venezolano experto en redacción de documentos legales.',
-        'MODO PLANTILLA: El usuario tiene plantillas textuales literales extraídas de sus propios documentos. Tu tarea principal es ENSAMBLAR el documento usando esas plantillas tal como están escritas, sustituyendo SOLO los placeholders ({{...}}) por los datos reales del caso. Conserva absolutamente toda la redacción, fórmulas, vocabulario, estructura y puntuación de las plantillas.',
-        'Si alguna sección del documento NO tiene plantilla disponible, redáctala tú siguiendo el estilo de las plantillas existentes.',
-        'No uses markdown ni comentarios fuera del documento. Tu respuesta debe ser ÚNICAMENTE el texto del documento final.',
+        '',
+        'MODO PLANTILLA — INSTRUCCIONES ESTRICTAS:',
+        '1. ENSAMBLAJE: Combina las plantillas proporcionadas en un solo documento coherente. Reemplaza TODOS los placeholders ({{...}}) con los datos reales del caso proporcionados en las secciones de DATOS DEL CLIENTE y PARÁMETROS DEL DOCUMENTO.',
+        '2. REDACCIÓN LITERAL: Conserva absolutamente toda la redacción, fórmulas jurídicas, vocabulario, estructura y puntuación de las plantillas. NO parafrasees, NO reescribas, NO resumas.',
+        '3. DISCURSO LÓGICO Y COHERENTE: Une las plantillas con un discurso fluido y conectado. Para cada punto del orden del día usa conectores apropiados que den continuidad:',
+        '   - Primer punto: "Seguidamente, el Presidente somete a la consideración de los presentes el primer punto del orden del día..."',
+        '   - Siguientes puntos: "Continúa la Asamblea con la consideración del segundo punto...", "Prosigue la Asamblea...", "Acto seguido, se somete a consideración..."',
+        '   - Cada punto debe cerrarse con la votación correspondiente antes de pasar al siguiente.',
+        '4. PLACEHOLDERS SIN DATOS: Si un dato necesario no fue proporcionado por el usuario, deja el placeholder tal cual ({{placeholder}}) para que el usuario lo complete manualmente.',
+        '5. SECCIONES SIN PLANTILLA: Si un acto del orden del día no tiene plantilla disponible, redáctalo tú siguiendo el mismo estilo y tono de las plantillas existentes.',
+        '',
+        'No uses markdown, código ni comentarios. Tu respuesta debe ser ÚNICAMENTE el texto del documento final, listo para imprimir.',
       ].join('\n')
     : [
         'Eres un abogado venezolano experto en redacción de documentos legales.',

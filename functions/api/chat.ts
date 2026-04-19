@@ -77,7 +77,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
     return json({ error: 'No hay mensajes.' }, 400)
   }
 
-  const proModel = env.GEMINI_PRO_MODEL || 'gemini-2.5-pro'
+  const proModel = env.GEMINI_PRO_MODEL || 'gemini-3.1-pro-preview'
 
   try {
     const systemInstruction = body.systemContext

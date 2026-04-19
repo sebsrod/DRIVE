@@ -159,7 +159,7 @@ export async function onRequestPost(context: Context): Promise<Response> {
     return json({ error: 'No se enviaron documentos modelo.' }, 400)
   }
 
-  const proModel = env.GEMINI_PRO_MODEL || 'gemini-2.5-pro'
+  const proModel = env.GEMINI_PRO_MODEL || 'gemini-3.1-pro-preview'
   const category = body.category
 
   try {
