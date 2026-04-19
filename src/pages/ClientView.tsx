@@ -19,8 +19,12 @@ import {
   proposalGrandTotal,
   scopeFromSlug,
   slugFromScope,
+  updateClient,
   uploadDocument,
 } from '../lib/api'
+import ClientFormModal, {
+  ClientFormValues,
+} from '../components/ClientFormModal'
 import { proposalServiceLabel } from '../lib/services'
 import DocumentList from '../components/DocumentList'
 import UploadButton from '../components/UploadButton'
@@ -48,6 +52,7 @@ export default function ClientView() {
   const [folderModalOpen, setFolderModalOpen] = useState(false)
   const [proposalModalOpen, setProposalModalOpen] = useState(false)
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     if (!clientId) return
@@ -80,6 +85,12 @@ export default function ClientView() {
   const handleUpload = async (file: File) => {
     if (!user || !client) return
     await uploadDocument({ file, client, subfolderId: null, ownerId: user.id })
+    await refresh()
+  }
+
+  const handleEditClient = async (values: ClientFormValues) => {
+    if (!client) return
+    await updateClient(client.id, values)
     await refresh()
   }
 
@@ -181,6 +192,12 @@ export default function ClientView() {
           )}
         </div>
         <div className="flex flex-col flex-wrap gap-2 sm:flex-row">
+          <button
+            onClick={() => setEditModalOpen(true)}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            ✏️ Editar
+          </button>
           <button
             onClick={() => setGenerateModalOpen(true)}
             className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
@@ -462,6 +479,15 @@ export default function ClientView() {
           onClose={() => setGenerateModalOpen(false)}
           client={client}
           onSaved={refresh}
+        />
+      )}
+
+      {client && (
+        <ClientFormModal
+          open={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          onSubmit={handleEditClient}
+          initialClient={client}
         />
       )}
     </div>

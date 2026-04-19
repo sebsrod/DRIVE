@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import Modal from './Modal'
-import { ClientType, LegalRepresentative, Shareholder } from '../lib/api'
+import { Client, ClientType, LegalRepresentative, Shareholder } from '../lib/api'
 
 interface ShareholderRow {
   name: string
@@ -34,6 +34,7 @@ interface Props {
   open: boolean
   onClose: () => void
   onSubmit: (values: ClientFormValues) => Promise<void>
+  initialClient?: Client | null
 }
 
 const emptyShareholder: ShareholderRow = {
@@ -49,7 +50,13 @@ const inputClass =
 const smallInputClass =
   'w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500'
 
-export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
+export default function ClientFormModal({
+  open,
+  onClose,
+  onSubmit,
+  initialClient,
+}: Props) {
+  const isEdit = !!initialClient
   const [clientType, setClientType] = useState<ClientType>('natural')
   const [name, setName] = useState('')
   const [cedulaRif, setCedulaRif] = useState('')
@@ -72,21 +79,57 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
 
   useEffect(() => {
     if (!open) return
-    setClientType('natural')
-    setName('')
-    setCedulaRif('')
-    setPhone('')
-    setAddress('')
-    setCapitalSocial('')
-    setRegistryOffice('')
-    setRegistryDate('')
-    setRegistryNumber('')
-    setRegistryVolume('')
-    setBoardDuration('')
-    setShareholders([{ ...emptyShareholder }])
-    setRepresentatives([{ ...emptyRep }])
+    if (initialClient) {
+      // Modo edición: prellenar con los datos actuales del cliente
+      setClientType(initialClient.client_type)
+      setName(initialClient.name)
+      setCedulaRif(initialClient.cedula_rif ?? '')
+      setPhone(initialClient.phone ?? '')
+      setAddress(initialClient.address ?? '')
+      setCapitalSocial(initialClient.capital_social ?? '')
+      setRegistryOffice(initialClient.registry_office ?? '')
+      setRegistryDate(initialClient.registry_date ?? '')
+      setRegistryNumber(initialClient.registry_number ?? '')
+      setRegistryVolume(initialClient.registry_volume ?? '')
+      setBoardDuration(initialClient.board_duration ?? '')
+      const existingShareholders = initialClient.shareholders ?? []
+      setShareholders(
+        existingShareholders.length > 0
+          ? existingShareholders.map((s) => ({
+              name: s.name,
+              cedula: s.cedula,
+              percentage: String(s.percentage ?? ''),
+            }))
+          : [{ ...emptyShareholder }],
+      )
+      const existingReps = initialClient.legal_representatives ?? []
+      setRepresentatives(
+        existingReps.length > 0
+          ? existingReps.map((r) => ({
+              name: r.name,
+              cedula: r.cedula,
+              position: r.position ?? '',
+            }))
+          : [{ ...emptyRep }],
+      )
+    } else {
+      // Modo creación: limpiar todo
+      setClientType('natural')
+      setName('')
+      setCedulaRif('')
+      setPhone('')
+      setAddress('')
+      setCapitalSocial('')
+      setRegistryOffice('')
+      setRegistryDate('')
+      setRegistryNumber('')
+      setRegistryVolume('')
+      setBoardDuration('')
+      setShareholders([{ ...emptyShareholder }])
+      setRepresentatives([{ ...emptyRep }])
+    }
     setError(null)
-  }, [open])
+  }, [open, initialClient])
 
   const updateShareholder = (
     i: number,
@@ -181,7 +224,11 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
   const nameLabel = isJuridica ? 'Razón social' : 'Nombre completo'
 
   return (
-    <Modal open={open} onClose={onClose} title="Agregar cliente">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Editar cliente' : 'Agregar cliente'}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Tipo de cliente */}
         <div>
@@ -541,7 +588,11 @@ export default function ClientFormModal({ open, onClose, onSubmit }: Props) {
             disabled={submitting}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {submitting ? 'Guardando…' : 'Agregar cliente'}
+            {submitting
+              ? 'Guardando…'
+              : isEdit
+                ? 'Guardar cambios'
+                : 'Agregar cliente'}
           </button>
         </div>
       </form>
