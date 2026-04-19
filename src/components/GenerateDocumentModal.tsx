@@ -12,6 +12,7 @@ import {
 } from '../lib/api'
 import { OFFICE_ADDRESS } from '../lib/officeInfo'
 import { useAuth } from '../contexts/AuthContext'
+import { downloadAsDocx } from '../lib/docxExport'
 import DocumentPreviewModal from './DocumentPreviewModal'
 import ChatPanel from './ChatPanel'
 
@@ -208,6 +209,19 @@ export default function GenerateDocumentModal({
     }
   }
 
+  const handleDownloadDocx = async () => {
+    try {
+      const author: Profile | null = await getProfile(user!.id).catch(
+        () => null,
+      )
+      const label =
+        DOC_TYPES.find((d) => d.key === documentType)?.label ?? documentType
+      await downloadAsDocx(result, author, `${label} - ${client.name}`)
+    } catch (err) {
+      setError('Error al generar Word: ' + (err as Error).message)
+    }
+  }
+
   const handleDownload = () => {
     const blob = new Blob([result], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -350,6 +364,20 @@ export default function GenerateDocumentModal({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={handleDownloadDocx}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              📄 Descargar Word
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700"
+            >
+              Ver con formato
+            </button>
+            <button
+              type="button"
               onClick={handleCopy}
               className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
             >
@@ -361,13 +389,6 @@ export default function GenerateDocumentModal({
               className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
             >
               Descargar .txt
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreviewOpen(true)}
-              className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700"
-            >
-              Ver con formato
             </button>
             <button
               type="button"
