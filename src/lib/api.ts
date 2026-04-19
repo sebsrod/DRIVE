@@ -264,6 +264,48 @@ export async function createClient(
   return data as Client
 }
 
+export async function updateClient(
+  clientId: string,
+  values: {
+    client_type: ClientType
+    name: string
+    cedula_rif?: string | null
+    phone?: string | null
+    address?: string | null
+    capital_social?: string | null
+    registry_office?: string | null
+    registry_date?: string | null
+    registry_number?: string | null
+    registry_volume?: string | null
+    board_duration?: string | null
+    shareholders?: Shareholder[]
+    legal_representatives?: LegalRepresentative[]
+  },
+): Promise<Client> {
+  const { data, error } = await supabase
+    .from('clients')
+    .update({
+      client_type: values.client_type,
+      name: values.name,
+      cedula_rif: values.cedula_rif || null,
+      phone: values.phone || null,
+      address: values.address || null,
+      capital_social: values.capital_social || null,
+      registry_office: values.registry_office || null,
+      registry_date: values.registry_date || null,
+      registry_number: values.registry_number || null,
+      registry_volume: values.registry_volume || null,
+      board_duration: values.board_duration || null,
+      shareholders: values.shareholders ?? [],
+      legal_representatives: values.legal_representatives ?? [],
+    })
+    .eq('id', clientId)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Client
+}
+
 export async function deleteClient(client: Client): Promise<void> {
   // Borrar archivos del storage primero (la BD hace cascade pero el storage no)
   const { data: docs, error: listError } = await supabase
