@@ -440,7 +440,7 @@ export default function ClientFormModal({
                         <strong>
                           {new Intl.NumberFormat('es-VE', {
                             minimumFractionDigits: 2,
-                            maximumFractionDigits: 4,
+                            maximumFractionDigits: 10,
                           }).format(valorAccion)}
                         </strong>
                       </p>
