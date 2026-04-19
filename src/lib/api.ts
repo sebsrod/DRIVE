@@ -282,7 +282,7 @@ export async function updateClient(
     legal_representatives?: LegalRepresentative[]
   },
 ): Promise<Client> {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('clients')
     .update({
       client_type: values.client_type,
@@ -300,10 +300,10 @@ export async function updateClient(
       legal_representatives: values.legal_representatives ?? [],
     })
     .eq('id', clientId)
-    .select()
-    .single()
   if (error) throw error
-  return data as Client
+  const updated = await getClient(clientId)
+  if (!updated) throw new Error('No se pudo obtener el cliente actualizado.')
+  return updated
 }
 
 export async function deleteClient(client: Client): Promise<void> {
