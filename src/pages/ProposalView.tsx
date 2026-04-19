@@ -116,7 +116,14 @@ export default function ProposalView() {
       )}
 
       {/* Hoja imprimible */}
-      <article className="print-sheet mx-auto max-w-3xl bg-white p-8 shadow sm:p-12 print:max-w-none print:shadow-none">
+      <article
+        className="print-sheet mx-auto max-w-3xl bg-white p-8 shadow sm:p-12 print:max-w-none print:shadow-none"
+        style={{
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '12pt',
+          lineHeight: '26pt',
+        }}
+      >
         {/* Encabezado del despacho */}
         <header className="border-b border-slate-300 pb-4 text-center">
           <h1 className="text-xl font-bold uppercase text-slate-900">
