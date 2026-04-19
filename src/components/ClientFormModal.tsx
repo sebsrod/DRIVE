@@ -1,6 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react'
 import Modal from './Modal'
-import { Client, ClientType, LegalRepresentative, Shareholder } from '../lib/api'
+import {
+  Client,
+  ClientType,
+  LegalRepresentative,
+  Shareholder,
+  parseCapitalAmount,
+} from '../lib/api'
 
 interface ShareholderRow {
   name: string
@@ -26,6 +32,7 @@ export interface ClientFormValues {
   registry_number: string
   registry_volume: string
   board_duration: string
+  total_shares: number | null
   shareholders: Shareholder[]
   legal_representatives: LegalRepresentative[]
 }
@@ -68,6 +75,7 @@ export default function ClientFormModal({
   const [registryNumber, setRegistryNumber] = useState('')
   const [registryVolume, setRegistryVolume] = useState('')
   const [boardDuration, setBoardDuration] = useState('')
+  const [totalShares, setTotalShares] = useState('')
   const [shareholders, setShareholders] = useState<ShareholderRow[]>([
     { ...emptyShareholder },
   ])
@@ -92,6 +100,11 @@ export default function ClientFormModal({
       setRegistryNumber(initialClient.registry_number ?? '')
       setRegistryVolume(initialClient.registry_volume ?? '')
       setBoardDuration(initialClient.board_duration ?? '')
+      setTotalShares(
+        initialClient.total_shares != null
+          ? String(initialClient.total_shares)
+          : '',
+      )
       const existingShareholders = initialClient.shareholders ?? []
       setShareholders(
         existingShareholders.length > 0
@@ -125,6 +138,7 @@ export default function ClientFormModal({
       setRegistryNumber('')
       setRegistryVolume('')
       setBoardDuration('')
+      setTotalShares('')
       setShareholders([{ ...emptyShareholder }])
       setRepresentatives([{ ...emptyRep }])
     }
@@ -208,6 +222,10 @@ export default function ClientFormModal({
         registry_number: clientType === 'juridica' ? registryNumber.trim() : '',
         registry_volume: clientType === 'juridica' ? registryVolume.trim() : '',
         board_duration: clientType === 'juridica' ? boardDuration.trim() : '',
+        total_shares:
+          clientType === 'juridica' && totalShares.trim()
+            ? parseFloat(totalShares)
+            : null,
         shareholders: cleanedShareholders,
         legal_representatives: cleanedReps,
       })
@@ -379,18 +397,57 @@ export default function ClientFormModal({
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Capital social
-                  </label>
-                  <input
-                    type="text"
-                    value={capitalSocial}
-                    onChange={(e) => setCapitalSocial(e.target.value)}
-                    className={inputClass}
-                    placeholder="Ej: USD 50.000 / Bs. 1.000.000"
-                  />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Capital social
+                    </label>
+                    <input
+                      type="text"
+                      value={capitalSocial}
+                      onChange={(e) => setCapitalSocial(e.target.value)}
+                      className={inputClass}
+                      placeholder="Ej: USD 50.000 / Bs. 1.000.000"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Cantidad total de acciones
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={totalShares}
+                      onChange={(e) => setTotalShares(e.target.value)}
+                      className={inputClass}
+                      placeholder="Ej: 1000"
+                    />
+                  </div>
                 </div>
+                {(() => {
+                  const totalCapital = parseCapitalAmount(capitalSocial)
+                  const totalSh = parseFloat(totalShares)
+                  if (
+                    !isNaN(totalCapital) &&
+                    !isNaN(totalSh) &&
+                    totalSh > 0
+                  ) {
+                    const valorAccion = totalCapital / totalSh
+                    return (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Valor nominal por acción ≈{' '}
+                        <strong>
+                          {new Intl.NumberFormat('es-VE', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4,
+                          }).format(valorAccion)}
+                        </strong>
+                      </p>
+                    )
+                  }
+                  return null
+                })()}
               </div>
             </fieldset>
 
@@ -399,7 +456,14 @@ export default function ClientFormModal({
                 Accionistas
               </legend>
               <ul className="space-y-2">
-                {shareholders.map((s, i) => (
+                {shareholders.map((s, i) => {
+                  const totalSh = parseFloat(totalShares)
+                  const pct = parseFloat(s.percentage)
+                  const sharesCount =
+                    !isNaN(totalSh) && !isNaN(pct) && totalSh > 0
+                      ? Math.round((pct / 100) * totalSh)
+                      : null
+                  return (
                   <li
                     key={i}
                     className="grid grid-cols-12 items-start gap-2 rounded-lg bg-white p-2"
@@ -417,7 +481,7 @@ export default function ClientFormModal({
                         className={smallInputClass}
                       />
                     </div>
-                    <div className="col-span-4">
+                    <div className="col-span-3">
                       <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
                         Cédula
                       </label>
@@ -446,6 +510,14 @@ export default function ClientFormModal({
                         className={`${smallInputClass} text-right`}
                       />
                     </div>
+                    <div className="col-span-1 pb-1 text-right">
+                      <label className="mb-0.5 block text-[10px] uppercase text-slate-500">
+                        Acc.
+                      </label>
+                      <p className="px-1 py-1 text-[11px] font-medium text-slate-700">
+                        {sharesCount ?? '—'}
+                      </p>
+                    </div>
                     <div className="col-span-1 flex items-end justify-end pb-1">
                       <button
                         type="button"
@@ -463,7 +535,8 @@ export default function ClientFormModal({
                       </button>
                     </div>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
               <button
                 type="button"

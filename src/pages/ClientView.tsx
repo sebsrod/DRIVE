@@ -16,6 +16,7 @@ import {
   listClientFolders,
   listClientProposals,
   listFundamentalDocuments,
+  parseCapitalAmount,
   proposalGrandTotal,
   scopeFromSlug,
   slugFromScope,
@@ -264,11 +265,36 @@ export default function ClientView() {
                   </div>
                 )}
                 {client.capital_social && (
-                  <div className="sm:col-span-2">
+                  <div>
                     <dt className="text-xs font-medium uppercase text-slate-500">
                       Capital social
                     </dt>
                     <dd className="text-slate-800">{client.capital_social}</dd>
+                  </div>
+                )}
+                {client.total_shares != null && (
+                  <div>
+                    <dt className="text-xs font-medium uppercase text-slate-500">
+                      Cantidad de acciones · Valor por acción
+                    </dt>
+                    <dd className="text-slate-800">
+                      {new Intl.NumberFormat('es-VE').format(client.total_shares)}
+                      {(() => {
+                        const cap = parseCapitalAmount(client.capital_social)
+                        if (
+                          !isNaN(cap) &&
+                          client.total_shares &&
+                          client.total_shares > 0
+                        ) {
+                          const v = cap / client.total_shares
+                          return ` · ≈ ${new Intl.NumberFormat('es-VE', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4,
+                          }).format(v)}`
+                        }
+                        return ''
+                      })()}
+                    </dd>
                   </div>
                 )}
               </dl>
@@ -279,7 +305,14 @@ export default function ClientView() {
                     Accionistas
                   </h4>
                   <ul className="mt-1 divide-y divide-slate-100 text-sm">
-                    {client.shareholders.map((s, i) => (
+                    {client.shareholders.map((s, i) => {
+                      const sharesCount =
+                        client.total_shares && client.total_shares > 0
+                          ? Math.round(
+                              (Number(s.percentage) / 100) * client.total_shares,
+                            )
+                          : null
+                      return (
                       <li
                         key={i}
                         className="flex items-center justify-between py-1.5"
@@ -294,11 +327,19 @@ export default function ClientView() {
                             </span>
                           )}
                         </div>
-                        <span className="text-sm font-semibold text-slate-700">
-                          {s.percentage}%
-                        </span>
+                        <div className="text-right">
+                          <span className="text-sm font-semibold text-slate-700">
+                            {s.percentage}%
+                          </span>
+                          {sharesCount != null && (
+                            <span className="ml-2 text-xs text-slate-500">
+                              ({new Intl.NumberFormat('es-VE').format(sharesCount)} acc.)
+                            </span>
+                          )}
+                        </div>
                       </li>
-                    ))}
+                      )
+                    })}
                   </ul>
                 </div>
               )}

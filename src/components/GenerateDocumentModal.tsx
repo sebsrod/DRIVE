@@ -41,6 +41,7 @@ const COMMON_ASSEMBLY_ACTS = [
 const ACT_NOMBRAMIENTO_JD = 'Nombramiento de Junta Directiva'
 const ACT_RATIFICACION_JD = 'Ratificación de Junta Directiva'
 const ACT_NOMBRAMIENTO_COMISARIO = 'Nombramiento de Comisario'
+const ACT_APROBACION_BALANCES = 'Aprobación de balances y estados financieros'
 const ACT_AUMENTO_CAPITAL = 'Aumento de capital social'
 const ACT_DISMINUCION_CAPITAL = 'Disminución de capital social'
 const ACT_DIVIDENDOS = 'Distribución de dividendos / utilidades'
@@ -664,6 +665,7 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
   const nombramientoJD = selectedActs.includes(ACT_NOMBRAMIENTO_JD)
   const ratificacionJD = selectedActs.includes(ACT_RATIFICACION_JD)
   const nombramientoComisario = selectedActs.includes(ACT_NOMBRAMIENTO_COMISARIO)
+  const aprobacionBalances = selectedActs.includes(ACT_APROBACION_BALANCES)
   const aumentoCapital = selectedActs.includes(ACT_AUMENTO_CAPITAL)
   const disminucionCapital = selectedActs.includes(ACT_DISMINUCION_CAPITAL)
   const dividendos = selectedActs.includes(ACT_DIVIDENDOS)
@@ -755,6 +757,17 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
       ? disolucionFacultades.filter((x) => x !== f)
       : [...disolucionFacultades, f]
     setParam('disolucionFacultades', JSON.stringify(next))
+  }
+
+  // -------- Años de balances aprobados --------
+  const balanceYears: number[] = params.balanceYears
+    ? JSON.parse(params.balanceYears)
+    : []
+  const toggleBalanceYear = (y: number) => {
+    const next = balanceYears.includes(y)
+      ? balanceYears.filter((x) => x !== y)
+      : [...balanceYears, y].sort()
+    setParam('balanceYears', JSON.stringify(next))
   }
 
   const updateJdMember = (
@@ -1113,6 +1126,50 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
               name="comisarioCarnet"
             />
           </div>
+        </fieldset>
+      )}
+
+      {/* -------- Aprobación de balances -------- */}
+      {aprobacionBalances && (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <legend className="px-2 text-xs font-semibold text-slate-700">
+            Aprobación de balances y estados financieros
+          </legend>
+          <p className="mb-2 text-[11px] text-slate-500">
+            Selecciona los ejercicios económicos cuyos balances se
+            aprueban en esta asamblea.
+          </p>
+          <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">
+            {Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - i).map(
+              (y) => {
+                const checked = balanceYears.includes(y)
+                return (
+                  <label
+                    key={y}
+                    className={`flex cursor-pointer items-center gap-1 rounded border px-2 py-1 text-xs ${
+                      checked
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-300 text-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleBalanceYear(y)}
+                      className="h-3 w-3"
+                    />
+                    {y}
+                  </label>
+                )
+              },
+            )}
+          </div>
+          {balanceYears.length > 0 && (
+            <p className="mt-2 text-[11px] text-slate-600">
+              Años seleccionados:{' '}
+              <strong>{balanceYears.sort().join(', ')}</strong>
+            </p>
+          )}
         </fieldset>
       )}
 
@@ -1576,13 +1633,22 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
       />
 
       {/* Participación (persona que firma/presenta al Registro Mercantil) */}
-      <Field
-        params={params}
-        setParam={setParam}
-        label="Persona que participa el acta (firma el documento)"
-        name="notaryPresenter"
-        placeholder="Nombre completo de quien firma y presenta al Registro Mercantil"
-      />
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Field
+          params={params}
+          setParam={setParam}
+          label="Persona que participa el acta (firma el documento)"
+          name="notaryPresenter"
+          placeholder="Nombre completo"
+        />
+        <Field
+          params={params}
+          setParam={setParam}
+          label="Cédula del participante"
+          name="notaryPresenterCedula"
+          placeholder="V-12345678"
+        />
+      </div>
     </div>
   )
 }
@@ -1927,13 +1993,22 @@ function ConstitutivoFields({ params, setParam }: FieldProps) {
       </fieldset>
 
       {/* Persona que presenta al Registro Mercantil */}
-      <Field
-        params={params}
-        setParam={setParam}
-        label="Persona autorizada para presentar al Registro Mercantil"
-        name="notaryPresenter"
-        placeholder="Nombre completo de quien firma y presenta ante el Registro"
-      />
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Field
+          params={params}
+          setParam={setParam}
+          label="Persona autorizada para presentar al Registro Mercantil"
+          name="notaryPresenter"
+          placeholder="Nombre completo"
+        />
+        <Field
+          params={params}
+          setParam={setParam}
+          label="Cédula del presentante"
+          name="notaryPresenterCedula"
+          placeholder="V-12345678"
+        />
+      </div>
     </div>
   )
 }

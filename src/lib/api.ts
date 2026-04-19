@@ -112,6 +112,7 @@ export interface Client {
   registry_number: string | null
   registry_volume: string | null
   board_duration: string | null
+  total_shares: number | null
   shareholders: Shareholder[]
   legal_representatives: LegalRepresentative[]
   created_at: string
@@ -198,6 +199,28 @@ function sanitizeFilename(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
+// Extrae el primer número de un string como "USD 50.000" o "Bs.
+// 1.234.567,89". Devuelve NaN si no encuentra un número parseable.
+export function parseCapitalAmount(capital: string | null | undefined): number {
+  if (!capital) return NaN
+  const cleaned = capital
+    .replace(/[^0-9,.\s-]/g, ' ')
+    .trim()
+    .replace(/\.(?=\d{3}(\D|$))/g, '') // separador de miles
+    .replace(',', '.')
+  const m = cleaned.match(/-?\d+(?:\.\d+)?/)
+  return m ? parseFloat(m[0]) : NaN
+}
+
+// Detecta el "símbolo" o prefijo de moneda en un string como "USD 50.000"
+export function extractCurrencyLabel(
+  capital: string | null | undefined,
+): string {
+  if (!capital) return ''
+  const m = capital.match(/^[^\d]+/)
+  return m ? m[0].trim() : ''
+}
+
 // ---------- CLIENTES ----------
 
 export async function listClients(scope: Scope): Promise<Client[]> {
@@ -235,6 +258,7 @@ export async function createClient(
     registry_number?: string | null
     registry_volume?: string | null
     board_duration?: string | null
+    total_shares?: number | null
     shareholders?: Shareholder[]
     legal_representatives?: LegalRepresentative[]
   },
@@ -255,6 +279,7 @@ export async function createClient(
       registry_number: values.registry_number || null,
       registry_volume: values.registry_volume || null,
       board_duration: values.board_duration || null,
+      total_shares: values.total_shares ?? null,
       shareholders: values.shareholders ?? [],
       legal_representatives: values.legal_representatives ?? [],
     })
@@ -278,6 +303,7 @@ export async function updateClient(
     registry_number?: string | null
     registry_volume?: string | null
     board_duration?: string | null
+    total_shares?: number | null
     shareholders?: Shareholder[]
     legal_representatives?: LegalRepresentative[]
   },
@@ -296,6 +322,7 @@ export async function updateClient(
       registry_number: values.registry_number || null,
       registry_volume: values.registry_volume || null,
       board_duration: values.board_duration || null,
+      total_shares: values.total_shares ?? null,
       shareholders: values.shareholders ?? [],
       legal_representatives: values.legal_representatives ?? [],
     })

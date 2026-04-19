@@ -58,6 +58,7 @@ interface RequestBody {
     registry_number?: string | null
     registry_volume?: string | null
     board_duration?: string | null
+    total_shares?: number | null
     shareholders?: Shareholder[]
     legal_representatives?: LegalRepresentative[]
   }
@@ -275,7 +276,11 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       if (s('notaryPresenter')) {
         cLines.push('')
         cLines.push(
-          `Persona autorizada para presentar el documento ante el Registro Mercantil: ${s('notaryPresenter')}`,
+          `Persona autorizada para presentar el documento ante el Registro Mercantil: ${s('notaryPresenter')}${
+            s('notaryPresenterCedula')
+              ? `, C.I. ${s('notaryPresenterCedula')}`
+              : ''
+          }`,
         )
       }
 
@@ -325,6 +330,7 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       )
       const disolucionFacultades = parseArray<string>(p.disolucionFacultades)
       const attendingIdxs = parseArray<number>(p.attendingIdxs)
+      const balanceYears = parseArray<number>(p.balanceYears)
 
       // Formatea "Nombre|Cédula" → "Nombre (C.I. Cédula)"
       const parsePerson = (raw: string) => {
@@ -433,6 +439,25 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
           lines.push(`  - Colegio en el que está inscrito: ${s('comisarioColegio')}`)
         if (s('comisarioCarnet'))
           lines.push(`  - N° de carnet: ${s('comisarioCarnet')}`)
+      }
+
+      // ---------- Aprobación de balances ----------
+      if (
+        balanceYears.length > 0 ||
+        selectedActs.includes('Aprobación de balances y estados financieros')
+      ) {
+        lines.push('')
+        if (balanceYears.length > 0) {
+          lines.push(
+            `Aprobación de balances y estados financieros — ejercicio(s) económico(s) a aprobar: ${balanceYears
+              .sort()
+              .join(', ')}`,
+          )
+        } else {
+          lines.push(
+            'Aprobación de balances y estados financieros — el usuario no especificó los años; redacta el punto pidiendo que el usuario complete los ejercicios.',
+          )
+        }
       }
 
       // ---------- Aumento de capital ----------
@@ -582,7 +607,11 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
       if (s('notaryPresenter')) {
         lines.push('')
         lines.push(
-          `Persona que participa el acta (firma al inicio y se autoriza al final para presentar ante el Registro Mercantil): ${s('notaryPresenter')}`,
+          `Persona que participa el acta (firma al inicio y se autoriza al final para presentar ante el Registro Mercantil): ${s('notaryPresenter')}${
+            s('notaryPresenterCedula')
+              ? `, C.I. ${s('notaryPresenterCedula')}`
+              : ''
+          }`,
         )
       }
 
@@ -629,6 +658,9 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
           }`
         : null,
       client.capital_social ? `Capital social: ${client.capital_social}` : null,
+      client.total_shares != null
+        ? `Cantidad total de acciones: ${client.total_shares}`
+        : null,
       client.board_duration
         ? `Duración de la Junta Directiva: ${client.board_duration}`
         : null,
@@ -636,14 +668,20 @@ function buildPrompt(body: RequestBody, ocrTexts: Record<string, string>): strin
 
     const shareholders = client.shareholders ?? []
     const reps = client.legal_representatives ?? []
+    const totalSh = Number(client.total_shares ?? 0)
 
     const shareholdersLines = shareholders.length
       ? [
           'Accionistas:',
-          ...shareholders.map(
-            (s) =>
-              `  - ${s.name}${s.cedula ? ` (C.I./RIF ${s.cedula})` : ''} — ${s.percentage}%`,
-          ),
+          ...shareholders.map((s) => {
+            const sharesCount =
+              totalSh > 0
+                ? Math.round((Number(s.percentage) / 100) * totalSh)
+                : null
+            return `  - ${s.name}${s.cedula ? ` (C.I./RIF ${s.cedula})` : ''} — ${s.percentage}%${
+              sharesCount != null ? ` (${sharesCount} acciones)` : ''
+            }`
+          }),
         ]
       : []
 
