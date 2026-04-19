@@ -471,6 +471,20 @@ function typeInstructions(type: string, p: Record<string, unknown>): string {
           lines.push(
             `  - Derecho de preferencia: ${s('aumentoRenunciaPreferencia')}`,
           )
+        // Modalidad "Anulación y emisión de nuevas acciones": datos extra
+        if (s('aumentoModalidad') === 'anulacion_nuevas_acciones') {
+          lines.push(
+            '  - Nota: Esta modalidad anula todas las acciones anteriores y emite nuevas. Busca en las plantillas la plantilla específica para "anulación y emisión de nuevas acciones" si está disponible, y úsala literalmente.',
+          )
+          if (s('aumentoNuevasAccionesCantidad'))
+            lines.push(
+              `  - Cantidad de nuevas acciones a emitir: ${s('aumentoNuevasAccionesCantidad')}`,
+            )
+          if (s('aumentoNuevasAccionesValor'))
+            lines.push(
+              `  - Valor de cada acción nueva: ${s('aumentoNuevasAccionesValor')}`,
+            )
+        }
       }
 
       // ---------- Disminución de capital ----------

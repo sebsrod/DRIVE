@@ -1162,6 +1162,7 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
               name="aumentoModalidad"
               options={[
                 { value: 'emision_nuevas_acciones', label: 'Emisión de nuevas acciones' },
+                { value: 'anulacion_nuevas_acciones', label: 'Anulación y emisión de nuevas acciones' },
                 { value: 'capitalizacion_utilidades', label: 'Capitalización de utilidades' },
                 { value: 'aporte_adicional', label: 'Aporte adicional de accionistas' },
                 { value: 'otro', label: 'Otra modalidad' },
@@ -1185,6 +1186,36 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
                 { value: 'no_aplica', label: 'No aplica / no se pronunció' },
               ]}
             />
+
+            {/* Campos específicos de "Anulación y emisión de nuevas acciones" */}
+            {params.aumentoModalidad === 'anulacion_nuevas_acciones' && (
+              <div className="rounded-lg border border-indigo-200 bg-white p-3">
+                <p className="mb-2 text-[11px] font-semibold uppercase text-indigo-700">
+                  Anulación y emisión de nuevas acciones
+                </p>
+                <p className="mb-2 text-[11px] text-slate-500">
+                  Las acciones anteriores se anulan y se emiten nuevas. Indica
+                  la cantidad y el valor de las acciones que se emitirán.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field
+                    params={params}
+                    setParam={setParam}
+                    label="N° de acciones nuevas"
+                    name="aumentoNuevasAccionesCantidad"
+                    type="number"
+                    placeholder="Ej: 1000"
+                  />
+                  <Field
+                    params={params}
+                    setParam={setParam}
+                    label="Valor de cada acción nueva"
+                    name="aumentoNuevasAccionesValor"
+                    placeholder="Ej: Bs. 0,000001"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </fieldset>
       )}

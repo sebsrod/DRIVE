@@ -289,7 +289,7 @@ export default function ClientView() {
                           const v = cap / client.total_shares
                           return ` · ≈ ${new Intl.NumberFormat('es-VE', {
                             minimumFractionDigits: 2,
-                            maximumFractionDigits: 4,
+                            maximumFractionDigits: 10,
                           }).format(v)}`
                         }
                         return ''
