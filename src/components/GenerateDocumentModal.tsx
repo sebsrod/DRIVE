@@ -1,16 +1,12 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import Modal from './Modal'
 import {
   ActTemplate,
   Client,
-  DocumentRow,
-  GeneratedAttachment,
   Profile,
-  downloadDocumentAsBase64,
   generateDocumentWithAI,
   getProfile,
   listActTemplates,
-  listFundamentalDocuments,
   saveGeneratedDocumentAsFile,
   styleCategoryForDocumentType,
 } from '../lib/api'
@@ -90,9 +86,6 @@ export default function GenerateDocumentModal({
   const [documentType, setDocumentType] = useState<DocType>('poder')
   const [params, setParams] = useState<Record<string, string>>({})
   const [additionalInstructions, setAdditionalInstructions] = useState('')
-  const [fundamentalDocs, setFundamentalDocs] = useState<DocumentRow[]>([])
-  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<string>('')
@@ -100,56 +93,70 @@ export default function GenerateDocumentModal({
   const [previewOpen, setPreviewOpen] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
 
-  // Reset al abrir
+  const draftKey = `draft-${client.id}`
+
+  // Restaurar proyecto guardado al abrir, o limpiar
   useEffect(() => {
     if (!open) return
+    const saved = localStorage.getItem(draftKey)
+    if (saved) {
+      try {
+        const draft = JSON.parse(saved) as {
+          documentType: DocType
+          params: Record<string, string>
+          additionalInstructions: string
+        }
+        setDocumentType(draft.documentType ?? 'poder')
+        setParams(draft.params ?? {})
+        setAdditionalInstructions(draft.additionalInstructions ?? '')
+        setInfo('Proyecto guardado restaurado.')
+        setTimeout(() => setInfo(null), 3000)
+      } catch {
+        setDocumentType('poder')
+        setParams({})
+        setAdditionalInstructions('')
+      }
+    } else {
+      setDocumentType('poder')
+      setParams({})
+      setAdditionalInstructions('')
+    }
+    setResult('')
+    setError(null)
+  }, [open, draftKey])
+
+  const handleSaveDraft = () => {
+    const draft = { documentType, params, additionalInstructions }
+    localStorage.setItem(draftKey, JSON.stringify(draft))
+    setInfo('Proyecto guardado.')
+    setTimeout(() => setInfo(null), 2000)
+  }
+
+  const handleClearDraft = () => {
+    localStorage.removeItem(draftKey)
     setDocumentType('poder')
     setParams({})
     setAdditionalInstructions('')
-    setSelectedDocIds(new Set())
     setResult('')
-    setError(null)
-    setInfo(null)
-  }, [open])
+    setInfo('Proyecto limpiado.')
+    setTimeout(() => setInfo(null), 2000)
+  }
 
-  // Cargar documentos fundamentales al abrir
-  useEffect(() => {
-    if (!open) return
-    let alive = true
-    ;(async () => {
-      try {
-        setLoading(true)
-        const docs = await listFundamentalDocuments(client.id)
-        if (!alive) return
-        setFundamentalDocs(docs)
-        // Por defecto marcar todos
-        setSelectedDocIds(new Set(docs.map((d) => d.id)))
-      } catch (err) {
-        if (alive) setError((err as Error).message)
-      } finally {
-        if (alive) setLoading(false)
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [open, client.id])
+  // Resumen del proyecto para el contexto del chat
+  const projectSummary = JSON.stringify(
+    {
+      tipo: DOC_TYPES.find((d) => d.key === documentType)?.label,
+      cliente: client.name,
+      tipoCliente: client.client_type,
+      parametros: params,
+      instrucciones: additionalInstructions,
+    },
+    null,
+    2,
+  )
 
   const setParam = (key: string, value: string) =>
     setParams((p) => ({ ...p, [key]: value }))
-
-  const toggleDoc = (id: string) =>
-    setSelectedDocIds((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-
-  const selectedDocs = useMemo(
-    () => fundamentalDocs.filter((d) => selectedDocIds.has(d.id)),
-    [fundamentalDocs, selectedDocIds],
-  )
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault()
@@ -159,28 +166,9 @@ export default function GenerateDocumentModal({
     setResult('')
     setGenerating(true)
     try {
-      // Descargar y convertir los documentos seleccionados a base64
-      const attachments: GeneratedAttachment[] = []
-      for (const doc of selectedDocs) {
-        try {
-          const att = await downloadDocumentAsBase64(doc)
-          attachments.push(att)
-        } catch (err) {
-          throw new Error(
-            `No se pudo descargar "${doc.name}": ${(err as Error).message}`,
-          )
-        }
-      }
-
-      // Perfil del autor (para los datos del abogado)
       const author: Profile | null = await getProfile(user.id).catch(() => null)
 
-      // Seleccionar la guía de estilo específica de la categoría que
-      // corresponde al tipo de documento. Si no hay guía por categoría
-      // caemos al writing_style legacy.
       const styleCategory = styleCategoryForDocumentType(documentType)
-      const categoryStyle = author?.writing_styles?.[styleCategory]
-      const writingStyle = categoryStyle || author?.writing_style || null
 
       // Cargar plantillas extraídas de la categoría
       let userTemplates: ActTemplate[] = []
@@ -199,8 +187,7 @@ export default function GenerateDocumentModal({
         client,
         author,
         officeAddress: OFFICE_ADDRESS,
-        attachments,
-        writingStyle,
+        attachments: [],
         templates: userTemplates,
       })
       setResult(text)
@@ -296,46 +283,6 @@ export default function GenerateDocumentModal({
           )}
         </fieldset>
 
-        {/* Documentos fundamentales a incluir como contexto */}
-        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <legend className="px-2 text-sm font-semibold text-slate-700">
-            Documentos fundamentales del cliente
-          </legend>
-          <p className="mb-3 text-xs text-slate-500">
-            La IA leerá el contenido (o hará OCR en las imágenes) para usar los
-            datos exactos al redactar el documento.
-          </p>
-          {loading ? (
-            <p className="text-sm text-slate-500">Cargando…</p>
-          ) : fundamentalDocs.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500">
-              No has subido documentos fundamentales a este cliente. Ciérralo,
-              sube el Documento Constitutivo y/o las cédulas en la sección
-              "Documentos fundamentales" y vuelve a intentarlo.
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {fundamentalDocs.map((doc) => (
-                <li key={doc.id} className="flex items-center gap-2 rounded bg-white p-2">
-                  <input
-                    type="checkbox"
-                    id={`fdoc-${doc.id}`}
-                    checked={selectedDocIds.has(doc.id)}
-                    onChange={() => toggleDoc(doc.id)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <label
-                    htmlFor={`fdoc-${doc.id}`}
-                    className="min-w-0 flex-1 truncate text-sm text-slate-700"
-                  >
-                    {doc.name}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </fieldset>
-
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
             Instrucciones adicionales (opcional)
@@ -352,21 +299,39 @@ export default function GenerateDocumentModal({
         {error && <p className="text-sm text-red-600">{error}</p>}
         {info && <p className="text-sm text-green-600">{info}</p>}
 
-        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
-            Cerrar
-          </button>
-          <button
-            type="submit"
-            disabled={generating}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {generating ? 'Generando con IA…' : 'Generar documento'}
-          </button>
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              className="rounded-lg border border-emerald-600 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+            >
+              💾 Guardar proyecto
+            </button>
+            <button
+              type="button"
+              onClick={handleClearDraft}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100"
+            >
+              Limpiar
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Cerrar
+            </button>
+            <button
+              type="submit"
+              disabled={generating}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {generating ? 'Generando con IA…' : 'Generar documento'}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -416,21 +381,24 @@ export default function GenerateDocumentModal({
         </div>
       )}
 
-      {/* Chat interactivo con Gemini — siempre visible */}
+      {/* Chat interactivo con Gemini */}
       <div className="mt-4">
         <ChatPanel
-          systemContext={`Eres un asistente jurídico venezolano experto. El usuario está generando un documento de tipo "${
-            DOC_TYPES.find((d) => d.key === documentType)?.label ?? documentType
-          }" para el cliente "${client.name}"${
-            client.client_type === 'juridica'
-              ? ` (persona jurídica, RIF: ${client.cedula_rif ?? 'N/A'})`
-              : ''
-          }. ${
-            result
-              ? 'Ya se generó un borrador del documento. Puedes ayudar a revisarlo, corregirlo o completar datos faltantes.'
-              : 'Aún no se ha generado el documento. Puedes ayudar a aclarar datos necesarios antes de generarlo.'
-          } Responde siempre en español, de forma clara y concisa. Si detectas que falta información clave para el documento, pregunta específicamente por ella.`}
-          placeholder="Pregunta a la IA, pide correcciones o consulta datos faltantes…"
+          systemContext={`Eres un asistente jurídico venezolano experto. El usuario está trabajando en un proyecto de documento legal.
+
+DATOS DEL PROYECTO GUARDADO:
+${projectSummary}
+
+DATOS DEL CLIENTE:
+Nombre: ${client.name}
+Tipo: ${client.client_type === 'juridica' ? 'Persona jurídica' : 'Persona natural'}
+${client.cedula_rif ? `RIF/Cédula: ${client.cedula_rif}` : ''}
+${client.shareholders?.length ? `Accionistas: ${client.shareholders.map((s) => `${s.name} (${s.percentage}%)`).join(', ')}` : ''}
+
+${result ? 'Ya se generó un borrador del documento. Puedes ayudar a revisarlo, corregirlo o completar datos faltantes.' : 'Aún no se ha generado el documento. Ayuda al usuario a completar los datos necesarios.'}
+
+Responde siempre en español, de forma clara y concisa. Si detectas que falta información clave para el documento, pregunta específicamente por ella. Haz preguntas puntuales y precisas sobre los datos que faltan.`}
+          placeholder="Pregunta a la IA sobre datos faltantes o pide ayuda…"
         />
       </div>
 
@@ -853,27 +821,17 @@ function ActaFields({ params, setParam, client }: ActaFieldsProps) {
         </div>
       </fieldset>
 
-      {/* -------- Presidencia y Secretaría -------- */}
+      {/* -------- Presidencia de la asamblea -------- */}
       <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
         <legend className="px-2 text-xs font-semibold text-slate-700">
-          Presidencia y Secretaría
+          Presidencia de la asamblea
         </legend>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
           <Select
             params={params}
             setParam={setParam}
             label="Presidente de la asamblea"
             name="assemblyPresident"
-            options={[
-              { value: '', label: '— seleccionar —' },
-              ...eligiblePeople,
-            ]}
-          />
-          <Select
-            params={params}
-            setParam={setParam}
-            label="Secretario de la asamblea"
-            name="assemblySecretary"
             options={[
               { value: '', label: '— seleccionar —' },
               ...eligiblePeople,

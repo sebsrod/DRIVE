@@ -585,7 +585,7 @@ export async function generateDocumentWithAI(
       },
       officeAddress: input.officeAddress,
       attachments: input.attachments,
-      writingStyle: input.writingStyle ?? null,
+      writingStyle: null,
       templates: (input.templates ?? []).map((t) => ({
         act_key: t.act_key,
         act_label: t.act_label,
