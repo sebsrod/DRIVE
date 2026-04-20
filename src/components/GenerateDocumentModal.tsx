@@ -127,7 +127,12 @@ export default function GenerateDocumentModal({
   }, [open, draftKey])
 
   const handleSaveDraft = () => {
-    const draft = { documentType, params, additionalInstructions }
+    const draft = {
+      documentType,
+      params,
+      additionalInstructions,
+      savedAt: new Date().toISOString(),
+    }
     localStorage.setItem(draftKey, JSON.stringify(draft))
     setInfo('Proyecto guardado.')
     setTimeout(() => setInfo(null), 2000)
