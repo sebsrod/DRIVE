@@ -66,6 +66,9 @@ async function verifyAuth(
   }
 }
 
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504, 524])
+const RETRY_DELAYS_MS = [2000, 5000, 10000]
+
 async function callGemini(
   model: string,
   apiKey: string,
@@ -75,18 +78,36 @@ async function callGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
   )}:generateContent?key=${apiKey}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { temperature, maxOutputTokens: 16384 },
-    }),
+  const body = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: { temperature, maxOutputTokens: 16384 },
   })
-  if (!res.ok) {
+  let lastErr = ''
+  let res: Response | null = null
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]))
+    }
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      })
+    } catch (err) {
+      lastErr = `fetch falló: ${(err as Error).message}`
+      res = null
+      continue
+    }
+    if (res.ok) break
     const errText = await res.text().catch(() => '')
+    lastErr = `${res.status} ${errText.slice(0, 300)}`
+    if (!RETRY_STATUSES.has(res.status)) break
+    res = null
+  }
+  if (!res || !res.ok) {
     throw new Error(
-      `Gemini ${model} respondió ${res.status}: ${errText.slice(0, 500)}`,
+      `Gemini ${model} falló tras ${RETRY_DELAYS_MS.length + 1} intentos: ${lastErr}`,
     )
   }
   const data = (await res.json()) as {

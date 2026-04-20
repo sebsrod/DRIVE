@@ -16,6 +16,92 @@ import { downloadAsDocx } from '../lib/docxExport'
 import DocumentPreviewModal from './DocumentPreviewModal'
 import ChatPanel from './ChatPanel'
 
+// Siempre incluir plantillas que cubran estructura general (encabezado,
+// convocatoria, quórum, presidencia, cierre, firma).
+const ALWAYS_KEYWORDS = [
+  'encabezado',
+  'header',
+  'convocatoria',
+  'quorum',
+  'quórum',
+  'presidencia',
+  'presidente',
+  'cierre',
+  'firma',
+  'final',
+  'general',
+  'introduccion',
+  'introducción',
+  'autorizacion',
+  'autorización',
+  'presentante',
+]
+
+// Mapeo heurístico: acto seleccionado (label) → palabras clave que debe
+// contener act_key o act_label de la plantilla para ser incluida.
+function keywordsForAct(actLabel: string): string[] {
+  const l = actLabel.toLowerCase()
+  if (l.includes('aumento de capital'))
+    return ['aumento', 'capital', 'emision', 'emisión', 'suscripcion', 'suscripción']
+  if (l.includes('disminución') || l.includes('disminucion'))
+    return ['disminucion', 'disminución', 'reduccion', 'reducción', 'capital']
+  if (l.includes('dividendos') || l.includes('utilidades'))
+    return ['dividendos', 'utilidades', 'distribucion', 'distribución']
+  if (l.includes('nombramiento de junta'))
+    return ['nombramiento', 'junta', 'directiva', 'jd', 'directores']
+  if (l.includes('ratificación de junta') || l.includes('ratificacion de junta'))
+    return ['ratificacion', 'ratificación', 'junta', 'directiva']
+  if (l.includes('comisario')) return ['comisario', 'comisaria', 'comisaría']
+  if (l.includes('reforma')) return ['reforma', 'estatutos', 'clausula', 'cláusula']
+  if (l.includes('venta') && l.includes('acciones'))
+    return ['venta', 'cesion', 'cesión', 'acciones', 'traspaso']
+  if (l.includes('cambio de domicilio')) return ['domicilio', 'sede', 'direccion', 'dirección']
+  if (l.includes('objeto social'))
+    return ['objeto', 'social', 'modificacion', 'modificación']
+  if (l.includes('prórroga') || l.includes('prorroga'))
+    return ['prorroga', 'prórroga', 'duracion', 'duración', 'extension', 'extensión']
+  if (l.includes('disolución') || l.includes('disolucion'))
+    return ['disolucion', 'disolución', 'liquidacion', 'liquidación', 'liquidador']
+  if (l.includes('fusión') || l.includes('fusion'))
+    return ['fusion', 'fusión', 'absorbente', 'absorbida']
+  if (l.includes('transformación') || l.includes('transformacion'))
+    return ['transformacion', 'transformación', 'tipo societario']
+  if (l.includes('activos')) return ['activos', 'autorizacion', 'venta']
+  if (l.includes('balances'))
+    return ['balance', 'balances', 'aprobacion', 'aprobación', 'ejercicio']
+  return [l]
+}
+
+function filterRelevantTemplates(
+  templates: ActTemplate[],
+  documentType: string,
+  params: Record<string, string>,
+): ActTemplate[] {
+  if (templates.length === 0) return templates
+  // Solo filtramos para actas; otros tipos usan todas sus plantillas.
+  if (documentType !== 'acta_asamblea') return templates
+
+  let selectedActs: string[] = []
+  try {
+    selectedActs = params.selectedActs ? JSON.parse(params.selectedActs) : []
+  } catch {
+    selectedActs = []
+  }
+
+  const actKeywords = selectedActs.flatMap(keywordsForAct)
+  const allKeywords = [...ALWAYS_KEYWORDS, ...actKeywords]
+
+  const filtered = templates.filter((t) => {
+    const haystack = `${t.act_key} ${t.act_label}`.toLowerCase()
+    return allKeywords.some((kw) => haystack.includes(kw))
+  })
+
+  // Si el filtro es demasiado agresivo y no dejó casi nada, envía todo
+  // para no dejar al modelo sin contexto.
+  if (filtered.length < 2) return templates
+  return filtered
+}
+
 const COMMON_ASSEMBLY_ACTS = [
   'Aprobación de balances y estados financieros',
   'Distribución de dividendos / utilidades',
@@ -183,6 +269,14 @@ export default function GenerateDocumentModal({
       } catch {
         // No es crítico: si no hay templates se genera libremente
       }
+
+      // Filtrar plantillas a sólo las relevantes para los actos marcados.
+      // Reduce el tamaño del prompt y ayuda a evitar 503 de Gemini.
+      userTemplates = filterRelevantTemplates(
+        userTemplates,
+        documentType,
+        params,
+      )
 
       const text = await generateDocumentWithAI({
         documentType,
