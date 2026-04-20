@@ -34,6 +34,7 @@ import ProposalFormModal, {
   ProposalFormValues,
 } from '../components/ProposalFormModal'
 import GenerateDocumentModal from '../components/GenerateDocumentModal'
+import SavedDraftsList from '../components/SavedDraftsList'
 
 export default function ClientView() {
   const { scope: scopeSlug, clientId } = useParams<{
@@ -408,6 +409,16 @@ export default function ClientView() {
                 currentUserId={user.id}
               />
             )}
+          </section>
+
+          <section className="mb-8">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Proyectos guardados
+            </h3>
+            <SavedDraftsList
+              clientId={clientId!}
+              onOpen={() => setGenerateModalOpen(true)}
+            />
           </section>
 
           <section className="mb-8">

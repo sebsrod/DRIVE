@@ -5,6 +5,7 @@ import {
   formatSize,
   getDocumentDownloadUrl,
 } from '../lib/api'
+import FilePreviewModal from './FilePreviewModal'
 
 interface Props {
   documents: DocumentRow[]
@@ -14,6 +15,7 @@ interface Props {
 
 export default function DocumentList({ documents, onChange, currentUserId }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null)
 
   const handleDownload = async (doc: DocumentRow) => {
     try {
@@ -49,41 +51,62 @@ export default function DocumentList({ documents, onChange, currentUserId }: Pro
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <ul className="divide-y divide-slate-100">
-        {documents.map((doc) => (
-          <li
-            key={doc.id}
-            className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium text-slate-800">{doc.name}</p>
-              <p className="text-xs text-slate-500">
-                {formatSize(doc.size)} ·{' '}
-                {new Date(doc.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex flex-shrink-0 gap-2">
-              <button
-                onClick={() => handleDownload(doc)}
-                disabled={busyId === doc.id}
-                className="rounded-md bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
-              >
-                Descargar
-              </button>
-              {doc.owner_id === currentUserId && (
+    <>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-100">
+          {documents.map((doc) => (
+            <li
+              key={doc.id}
+              className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0 flex-1">
                 <button
-                  onClick={() => handleDelete(doc)}
-                  disabled={busyId === doc.id}
-                  className="rounded-md bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  type="button"
+                  onClick={() => setPreviewDoc(doc)}
+                  className="truncate text-left font-medium text-indigo-700 hover:underline"
                 >
-                  Eliminar
+                  {doc.name}
                 </button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+                <p className="text-xs text-slate-500">
+                  {formatSize(doc.size)} ·{' '}
+                  {new Date(doc.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="flex flex-shrink-0 gap-2">
+                <button
+                  onClick={() => setPreviewDoc(doc)}
+                  disabled={busyId === doc.id}
+                  className="rounded-md bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                >
+                  Vista previa
+                </button>
+                <button
+                  onClick={() => handleDownload(doc)}
+                  disabled={busyId === doc.id}
+                  className="rounded-md bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                >
+                  Descargar
+                </button>
+                {doc.owner_id === currentUserId && (
+                  <button
+                    onClick={() => handleDelete(doc)}
+                    disabled={busyId === doc.id}
+                    className="rounded-md bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    Eliminar
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <FilePreviewModal
+        open={previewDoc !== null}
+        onClose={() => setPreviewDoc(null)}
+        document={previewDoc}
+      />
+    </>
   )
 }
