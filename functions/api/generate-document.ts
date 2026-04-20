@@ -111,6 +111,9 @@ async function verifyAuth(request: Request, env: Env): Promise<boolean> {
   }
 }
 
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504, 524])
+const RETRY_DELAYS_MS = [2000, 5000, 10000] // 3 intentos con backoff
+
 async function callGemini(
   model: string,
   apiKey: string,
@@ -120,31 +123,45 @@ async function callGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
   )}:generateContent?key=${apiKey}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens: 8192,
-      },
-    }),
+  const body = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: { temperature, maxOutputTokens: 8192 },
   })
-  if (!res.ok) {
+
+  let lastErr = ''
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) =>
+        setTimeout(r, RETRY_DELAYS_MS[attempt - 1]),
+      )
+    }
+    let res: Response
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      })
+    } catch (err) {
+      lastErr = `fetch falló: ${(err as Error).message}`
+      continue
+    }
+    if (res.ok) {
+      const data = (await res.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      }
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!text) throw new Error('Gemini devolvió una respuesta vacía')
+      return text
+    }
     const errText = await res.text().catch(() => '')
-    throw new Error(
-      `Gemini ${model} respondió ${res.status}: ${errText.slice(0, 500)}`,
-    )
+    lastErr = `${res.status} ${errText.slice(0, 300)}`
+    // Solo reintenta en errores transitorios
+    if (!RETRY_STATUSES.has(res.status)) break
   }
-  const data = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-  }
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) {
-    throw new Error('Gemini devolvió una respuesta vacía')
-  }
-  return text
+  throw new Error(
+    `Gemini ${model} falló tras ${RETRY_DELAYS_MS.length + 1} intentos: ${lastErr}`,
+  )
 }
 
 async function ocrImage(

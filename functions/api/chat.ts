@@ -106,16 +106,35 @@ export async function onRequestPost(context: Context): Promise<Response> {
       reqBody.systemInstruction = systemInstruction
     }
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(reqBody),
-    })
-
-    if (!res.ok) {
+    const RETRY_STATUSES = new Set([429, 500, 502, 503, 504, 524])
+    const RETRY_DELAYS_MS = [2000, 5000, 10000]
+    const payload = JSON.stringify(reqBody)
+    let lastErr = ''
+    let res: Response | null = null
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]))
+      }
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: payload,
+        })
+      } catch (err) {
+        lastErr = `fetch falló: ${(err as Error).message}`
+        res = null
+        continue
+      }
+      if (res.ok) break
       const errText = await res.text().catch(() => '')
+      lastErr = `${res.status} ${errText.slice(0, 300)}`
+      if (!RETRY_STATUSES.has(res.status)) break
+      res = null
+    }
+    if (!res || !res.ok) {
       throw new Error(
-        `Gemini respondió ${res.status}: ${errText.slice(0, 500)}`,
+        `Gemini ${proModel} falló tras ${RETRY_DELAYS_MS.length + 1} intentos: ${lastErr}`,
       )
     }
 
